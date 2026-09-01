@@ -27,4 +27,10 @@ class columnProfile(BaseModel):
     lower_bound : float | None = None
     upper_bound : float | None = None
 
+    top_categories : dict[str , int] | None = None
+    mode : str | None = None 
+
+    datetime_min : str | None = None
+    datetime_max : str | None = None 
+
 
