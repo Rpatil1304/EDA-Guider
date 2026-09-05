@@ -1,36 +1,56 @@
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
-class columnProfile(BaseModel):
+class ColumnProfile(BaseModel):
 
-    name : str 
-    inferred_type : str
-    raw_dtype : str
+    # 1. Basic column information
 
-    missing_count : int 
-    missing_percentage : float
-
-    unique_count : int
-    unique_percentage : float
-
-# Because these statistics don't make sense for every column. (For categorical columns, for example, they don't make sense.)
-    meam : float | None = None 
-    median : float | None = None
-    std : float | None = None
-    minimum : float | None = None
-    maximum : float | None = None
-    skwewness : float | None = None
-    kurtosis : float | None = None
-
-    outlier_count : int = 0 
-    outlier_percentage : float = 0.0
-    lower_bound : float | None = None
-    upper_bound : float | None = None
-
-    top_categories : dict[str , int] | None = None
-    mode : str | None = None 
-
-    datetime_min : str | None = None
-    datetime_max : str | None = None 
+    name: str
+    raw_dtype: str
+    inferred_type: str
+    row_count: int = 0
 
 
+    # 2. Missing-value information
+
+    missing_count: int = 0
+    missing_percentage: float = 0.0
+    null_like_count: int = 0
+
+
+    # 3. Cardinality / uniqueness information
+
+    unique_count: int = 0
+    unique_percentage: float = 0.0
+
+
+    # 4. Raw data-quality observations
+
+    has_whitespace: bool = False
+    has_empty_strings: bool = False
+    invalid_parse_count: int = 0
+
+
+    # 5. Type-conversion / semantic detection information
+
+    numeric_parseable_percentage: float | None = None
+    datetime_parseable_percentage: float | None = None
+    boolean_parseable_percentage: float | None = None
+
+
+    # 6. Possible special characteristics
+
+    is_constant: bool = False
+    is_potential_id: bool = False
+
+
+    # 7. Raw-value examples
+
+    sample_values: list[Any] = Field(default_factory=list)
+
+
+    # 8. Preprocessing-related observations
+
+    preprocessing_flags: list[str] = Field(default_factory=list)
