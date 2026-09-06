@@ -87,7 +87,7 @@ EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applie
 ## Project Roadmap
 
 ```text
-Phase 0  → Data Structures (Done)
+Phase 0  → Data Structures
               ↓
 Phase 1  → Ingestion & Profiling
               ↓
