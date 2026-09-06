@@ -1,8 +1,8 @@
 # EDA-Guider
 
-**Agentic AI-driven Exploratory Data Analysis system** that guides users through EDA on any tabular dataset (CSV/Excel) — without replacing the analyst.
+**Agentic AI-driven Exploratory Data Analysis system** that guides users through EDA on any tabular dataset (CSV/Excel) - without replacing the analyst.
 
-EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applies that preprocessing internally (never touching the original data), computes real statistics on the cleaned copy, and generates a grounded, evidence-backed report — with every decision logged in a transparent audit trail.
+EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applies that preprocessing internally (never touching the original data), computes real statistics on the cleaned copy, and generates a grounded, evidence-backed report with every decision logged in a transparent audit trail.
 
 ---
 
