@@ -87,25 +87,25 @@ EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applie
 ## Project Roadmap
 
 Phase 0 → Data Structures (Done)  
-↓  
+            ↓  
 Phase 1 → Ingestion & Profiling  
-↓  
+            ↓  
 Phase 2 → Custom Rule Engine  
-↓  
+            ↓  
 Phase 3 → LangChain + LLM Agent  
-↓  
+            ↓  
 Phase 4 → Internal Preprocessing  
-↓  
+            ↓  
 Phase 5 → Statistics  
-↓  
+            ↓  
 Phase 6 → Visualization Recommendation  
-↓  
+            ↓  
 Phase 7 → Insight Synthesis  
-↓  
+            ↓  
 Phase 8 → Audit Trail  
-↓  
+            ↓  
 Phase 9 → Orchestration  
-↓  
+            ↓  
 Phase 10 → FastAPI + Next.js
 
 
