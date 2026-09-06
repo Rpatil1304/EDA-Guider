@@ -9,7 +9,7 @@ EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applie
 ## Architecture
 
 ```
-                             EDA-GUIDER
+                           EDA-GUIDER
                                 │
                          ┌──────▼──────┐
                          │ Data Upload │
@@ -41,10 +41,10 @@ EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applie
                                 ↓
                        ┌────────┴────────┐
                        ↓                 ↓
-                    HIGH              LOW
-                 confidence        confidence
+                      HIGH              LOW
+                   confidence        confidence
                        ↓                 ↓
-               Internal Apply      User Review
+                Internal Apply      User Review
                        └────────┬────────┘
                                 ↓
                         Clean Internal Data
@@ -70,17 +70,17 @@ EDA-Guider inspects a dataset, reasons about what preprocessing it needs, applie
                      │ Hallucination Check │
                      └──────────┬──────────┘
                                 ↓
-                             REPORT
+                              REPORT
                                 │
                  ┌──────────────┼──────────────┐
                  ↓              ↓              ↓
-              Dashboard      Audit Trail    Export
+              Dashboard     Audit Trail      Export
                                 │
                                 ↓
                           Version History
                                 │
                                 ↓
-                          User Feedback
+                           User Feedback
 ```
 ---
 
