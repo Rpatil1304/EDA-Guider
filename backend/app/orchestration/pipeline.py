@@ -3,7 +3,7 @@ Main analysis pipeline
 """
 import pandas as pd
 from app.ingestion.loader import DataLoader
-from app.profiling.profiler import DataProfiler
+from backend.app.profiling.dataset_profiler import DataProfiler
 from app.agent.agent import Agent
 from app.execution.executor import Executor
 from app.visualization.chart_builder import ChartBuilder
