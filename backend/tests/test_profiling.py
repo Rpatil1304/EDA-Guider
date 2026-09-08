@@ -3,6 +3,10 @@ import pandas as pd
 from app.profiling.dataset_profiler import profile_dataset
 
 
+from app.preprocessing.rule_engine import (
+    generate_preprocessing_plan
+)
+
 def create_messy_dataset() -> pd.DataFrame:
     """
     Create a deliberately messy dataset for testing
@@ -430,8 +434,47 @@ def create_messy_dataset() -> pd.DataFrame:
 
 if __name__ == "__main__":
 
+    # --------------------------------------------------------
+    # Create test dataset
+    # --------------------------------------------------------
+
     df = create_messy_dataset()
+
+    # --------------------------------------------------------
+    # Generate dataset profile
+    # --------------------------------------------------------
 
     profile = profile_dataset(df)
 
-    print(profile)
+    # --------------------------------------------------------
+    # Generate preprocessing plan
+    # --------------------------------------------------------
+
+    plan = generate_preprocessing_plan(
+        profile
+    )
+
+    # --------------------------------------------------------
+    # Display preprocessing actions
+    # --------------------------------------------------------
+
+    print("\n")
+    print("=" * 70)
+    print("PREPROCESSING PLAN")
+    print("=" * 70)
+
+    for action in plan.actions:
+
+        print("\nColumn:", action.columns)
+        print("Action:", action.action)
+        print("Reason:", action.reason)
+
+        if action.parameters:
+            print(
+                "Parameters:",
+                action.parameters
+            )
+
+    print("\n")
+    print("Reasoning:", plan.reasoning)
+    print("Source:", plan.source)
