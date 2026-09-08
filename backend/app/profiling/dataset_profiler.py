@@ -1,75 +1,155 @@
-# dataset_profiler.py will create the overall profile
+# dataset_profiler.py
+#
+# This file creates the overall profile
 # of the complete dataset.
+#
+# Flow:
+#
+# DataFrame
+#     ↓
+# profile_column()
+#     ↓
+# ColumnProfile for every column
+#     ↓
+# Dataset-level statistics
+#     ↓
+# DatasetProfile
 
 
 import pandas as pd
 
-from profiling.column_profiler import profile_column
-from profiling.quality import get_duplicate_row_info
-
-from data_structures.profile import (
-    ColumnProfile,
-    DatasetProfile,
+from app.profiling.column_profiler import (
+    profile_column
 )
 
+from app.profiling.quality import (
+    get_duplicate_row_info
+)
+
+from app.schemas.profile import (
+    ColumnProfile,
+    DatasetProfile
+)
+
+
+# ============================================================
+# 1. DATASET QUALITY SUMMARY
+# ============================================================
 
 def get_dataset_quality_summary(
     column_profiles: list[ColumnProfile]
 ) -> dict:
     """
-    Create a high-level quality summary for the dataset.
+    Create a high-level quality summary
+    from all column profiles.
 
-    This function only analyzes existing column profiles.
-    It does not modify the original DataFrame.
+    This function does not modify the data.
     """
 
-    total_columns = len(column_profiles)
+    total_columns = len(
+        column_profiles
+    )
+
+    # --------------------------------------------------------
+    # Missing values
+    # --------------------------------------------------------
 
     columns_with_missing = sum(
         profile.missing_count > 0
         for profile in column_profiles
     )
 
+    # --------------------------------------------------------
+    # Null-like values
+    # --------------------------------------------------------
+
+    columns_with_null_like_values = sum(
+        profile.null_like_count > 0
+        for profile in column_profiles
+    )
+
+    # --------------------------------------------------------
+    # Whitespace
+    # --------------------------------------------------------
+
     columns_with_whitespace = sum(
         profile.has_whitespace
         for profile in column_profiles
     )
+
+    # --------------------------------------------------------
+    # Empty strings
+    # --------------------------------------------------------
 
     columns_with_empty_strings = sum(
         profile.has_empty_strings
         for profile in column_profiles
     )
 
+    # --------------------------------------------------------
+    # Mixed data types
+    # --------------------------------------------------------
+
     columns_with_mixed_types = sum(
         profile.has_mixed_types
         for profile in column_profiles
     )
+
+    # --------------------------------------------------------
+    # Case variations
+    # --------------------------------------------------------
 
     columns_with_case_variations = sum(
         profile.has_case_variations
         for profile in column_profiles
     )
 
+    # --------------------------------------------------------
+    # Constant columns
+    # --------------------------------------------------------
+
     constant_columns = sum(
         profile.is_constant
         for profile in column_profiles
     )
+
+    # --------------------------------------------------------
+    # Potential ID columns
+    # --------------------------------------------------------
 
     potential_id_columns = sum(
         profile.is_potential_id
         for profile in column_profiles
     )
 
+    # --------------------------------------------------------
+    # Columns containing outliers
+    # --------------------------------------------------------
+
     columns_with_outliers = sum(
         profile.outlier_count > 0
         for profile in column_profiles
     )
 
+    # --------------------------------------------------------
+    # Columns containing invalid values
+    # --------------------------------------------------------
+
+    columns_with_invalid_values = sum(
+        profile.invalid_parse_count > 0
+        for profile in column_profiles
+    )
+
     return {
-        "total_columns": total_columns,
+
+        "total_columns":
+            total_columns,
 
         "columns_with_missing":
             columns_with_missing,
+
+        "columns_with_null_like_values":
+            columns_with_null_like_values,
 
         "columns_with_whitespace":
             columns_with_whitespace,
@@ -91,8 +171,15 @@ def get_dataset_quality_summary(
 
         "columns_with_outliers":
             columns_with_outliers,
+
+        "columns_with_invalid_values":
+            columns_with_invalid_values,
     }
 
+
+# ============================================================
+# 2. COMPLETE DATASET PROFILE
+# ============================================================
 
 def profile_dataset(
     df: pd.DataFrame
@@ -115,12 +202,12 @@ def profile_dataset(
 
     for column in df.columns:
 
-        column_profile = profile_column(
+        profile = profile_column(
             df[column]
         )
 
         column_profiles.append(
-            column_profile
+            profile
         )
 
     # --------------------------------------------------------
@@ -136,8 +223,10 @@ def profile_dataset(
     # Dataset-level quality summary
     # --------------------------------------------------------
 
-    quality_summary = get_dataset_quality_summary(
-        column_profiles
+    quality_summary = (
+        get_dataset_quality_summary(
+            column_profiles
+        )
     )
 
     # --------------------------------------------------------
@@ -145,13 +234,24 @@ def profile_dataset(
     # --------------------------------------------------------
 
     return DatasetProfile(
+
         row_count=len(df),
+
         column_count=len(df.columns),
 
-        duplicate_row_count=duplicate_row_count,
-        duplicate_row_percentage=duplicate_row_percentage,
+        duplicate_row_count=(
+            duplicate_row_count
+        ),
 
-        column_profiles=column_profiles,
+        duplicate_row_percentage=(
+            duplicate_row_percentage
+        ),
 
-        quality_summary=quality_summary,
+        column_profiles=(
+            column_profiles
+        ),
+
+        quality_summary=(
+            quality_summary
+        ),
     )

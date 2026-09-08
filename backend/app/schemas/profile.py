@@ -5,25 +5,33 @@ from pydantic import BaseModel, Field
 
 class ColumnProfile(BaseModel):
 
+    # --------------------------------------------------------
     # 1. Basic column information
+    # --------------------------------------------------------
 
     name: str
     raw_dtype: str
     inferred_type: str
     row_count: int = 0
 
+    # --------------------------------------------------------
     # 2. Missing-value information
+    # --------------------------------------------------------
 
     missing_count: int = 0
     missing_percentage: float = 0.0
     null_like_count: int = 0
 
+    # --------------------------------------------------------
     # 3. Cardinality / uniqueness information
+    # --------------------------------------------------------
 
     unique_count: int = 0
     unique_percentage: float = 0.0
 
+    # --------------------------------------------------------
     # 4. Raw data-quality observations
+    # --------------------------------------------------------
 
     has_whitespace: bool = False
     whitespace_count: int = 0
@@ -35,13 +43,17 @@ class ColumnProfile(BaseModel):
 
     invalid_parse_count: int = 0
 
+    # --------------------------------------------------------
     # 5. Type-conversion / semantic detection information
+    # --------------------------------------------------------
 
     numeric_parseable_percentage: float | None = None
     datetime_parseable_percentage: float | None = None
     boolean_parseable_percentage: float | None = None
 
-    # 6. Possible special characteristics
+    # --------------------------------------------------------
+    # 6. Special characteristics
+    # --------------------------------------------------------
 
     has_case_variations: bool = False
     has_mixed_types: bool = False
@@ -50,19 +62,58 @@ class ColumnProfile(BaseModel):
     is_potential_id: bool = False
     is_potential_text: bool = False
 
+    # --------------------------------------------------------
     # 7. Statistical observations
+    # --------------------------------------------------------
 
     outlier_count: int = 0
     outlier_percentage: float = 0.0
 
+    # --------------------------------------------------------
     # 8. Raw-value examples
+    # --------------------------------------------------------
 
     sample_values: list[Any] = Field(
         default_factory=list
     )
 
+    # --------------------------------------------------------
     # 9. Preprocessing-related observations
+    # --------------------------------------------------------
 
     preprocessing_flags: list[str] = Field(
         default_factory=list
+    )
+
+
+class DatasetProfile(BaseModel):
+
+    # --------------------------------------------------------
+    # 1. Basic dataset information
+    # --------------------------------------------------------
+
+    row_count: int = 0
+    column_count: int = 0
+
+    # --------------------------------------------------------
+    # 2. Dataset-level duplicate information
+    # --------------------------------------------------------
+
+    duplicate_row_count: int = 0
+    duplicate_row_percentage: float = 0.0
+
+    # --------------------------------------------------------
+    # 3. Individual column profiles
+    # --------------------------------------------------------
+
+    column_profiles: list[ColumnProfile] = Field(
+        default_factory=list
+    )
+
+    # --------------------------------------------------------
+    # 4. Overall quality summary
+    # --------------------------------------------------------
+
+    quality_summary: dict[str, Any] = Field(
+        default_factory=dict
     )

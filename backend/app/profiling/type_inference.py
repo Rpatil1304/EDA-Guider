@@ -1,20 +1,67 @@
-# This file determines the semantic type of every column.
-# It only analyzes the data.
-# It does NOT modify the original DataFrame.
+# type_inference.py
+#
+# This module analyzes the semantic type of a column.
+#
+# IMPORTANT:
+# - This module ONLY analyzes data.
+# - It never modifies the original DataFrame/Series.
+# - Raw representation and semantic meaning are treated separately.
 
+
+import re
 
 import pandas as pd
 
 
-# 1. BASIC TYPE INFERENCE
+# ============================================================
+# CONSTANTS
+# ============================================================
 
-def infer_basic_type(series: pd.Series) -> str:
+NULL_LIKE_VALUES = {
+    "",
+    "na",
+    "n/a",
+    "nan",
+    "null",
+    "none",
+    "missing",
+}
+
+BOOLEAN_VALUES = {
+    "true",
+    "false",
+    "yes",
+    "no",
+    "y",
+    "n",
+}
+
+PERCENTAGE_PATTERN = re.compile(
+    r"^[+-]?\d+(\.\d+)?\s*%$"
+)
+
+CURRENCY_PATTERN = re.compile(
+    r"^[\s]*"
+    r"[\$€£₹]"
+    r"\s*"
+    r"[+-]?"
+    r"\d[\d,]*(\.\d+)?"
+    r"\s*$"
+)
+
+
+# ============================================================
+# 1. BASIC PANDAS TYPE
+# ============================================================
+
+def infer_basic_type(
+    series: pd.Series
+) -> str:
     """
-    Infer the basic type of a Pandas Series
-    using its existing Pandas dtype.
+    Infer the basic datatype using Pandas dtype.
 
-    This function handles types that Pandas can
-    identify reliably without inspecting string content.
+    This function is used only when Pandas can reliably
+    identify the datatype.
     """
 
     if pd.api.types.is_bool_dtype(series):
@@ -37,18 +84,22 @@ def infer_basic_type(series: pd.Series) -> str:
 
     return "unknown"
 
-# 2. NORMALIZATION FOR INFERENCE
 
-def normalize_for_inference(series: pd.Series) -> pd.Series:
+# ============================================================
+# 2. TEMPORARY NORMALIZATION
+# ============================================================
+
+def normalize_for_inference(
+    series: pd.Series
+) -> pd.Series:
     """
-    Create a temporary normalized copy of a Series
-    for type detection.
+    Create a temporary normalized copy for inference.
 
     Only leading and trailing whitespace is removed.
 
     Case is preserved.
 
-    The original dataset is never modified.
+    The original Series is never modified.
     """
 
     normalized = series.copy()
@@ -58,7 +109,8 @@ def normalize_for_inference(series: pd.Series) -> pd.Series:
         or pd.api.types.is_string_dtype(normalized)
     ):
         normalized = normalized.map(
-            lambda value: value.strip()
+            lambda value:
+            value.strip()
             if isinstance(value, str)
             else value
         )
@@ -66,23 +118,56 @@ def normalize_for_inference(series: pd.Series) -> pd.Series:
     return normalized
 
 
-# 3. NUMERIC PARSEABILITY
+def _is_null_like(value) -> bool:
+    """
+    Determine whether a value represents missing data
+    for semantic inference.
+    """
 
+    if pd.isna(value):
+        return True
+
+    if isinstance(value, str):
+        return (
+            value.strip().lower()
+            in NULL_LIKE_VALUES
+        )
+
+    return False
+
+
+def _get_semantic_non_null_values(
+    series: pd.Series
+) -> pd.Series:
+    """
+    Return values that are not actual or textual
+    missing-value markers.
+
+    This is only a temporary view for inference.
+    """
+
+    normalized = normalize_for_inference(series)
+
+    return normalized[
+        ~normalized.map(_is_null_like)
+    ]
+
+
+# ============================================================
+# 3. NUMERIC ANALYSIS
+# ============================================================
 
 def get_numeric_parseable_percentage(
     series: pd.Series
 ) -> float:
     """
-    Calculate the percentage of non-null values
-    that can be directly parsed as numeric.
+    Calculate the percentage of semantic non-null values
+    that can directly be parsed as numeric.
 
-    No symbols, commas, percentages, or currency
-    signs are removed during this process.
+    Symbols such as %, $, commas, etc. are NOT removed.
     """
 
-    normalized = normalize_for_inference(series)
-
-    non_null = normalized.dropna()
+    non_null = _get_semantic_non_null_values(series)
 
     if non_null.empty:
         return 0.0
@@ -97,22 +182,25 @@ def get_numeric_parseable_percentage(
     )
 
 
-# 4. INTEGER VS FLOAT FOR NUMERIC STRINGS
-
-def infer_numeric_string_type(series: pd.Series) -> str:
+def infer_numeric_string_type(
+    series: pd.Series
+) -> str:
     """
-    Determine whether a string/object column containing
-    numeric values represents integers or floats.
+    Infer whether a column represents integer or float.
 
-    Returns:
-        "integer"
-        "float"
-        "unknown"
+    Mixed representations are allowed.
+
+    Example:
+
+        25
+        "30"
+        " 35 "
+        40
+
+    is inferred as integer.
     """
 
-    normalized = normalize_for_inference(series)
-
-    non_null = normalized.dropna()
+    non_null = _get_semantic_non_null_values(series)
 
     if non_null.empty:
         return "unknown"
@@ -122,40 +210,63 @@ def infer_numeric_string_type(series: pd.Series) -> str:
         errors="coerce"
     )
 
-    # Mixed values cannot be confidently classified.
-    if numeric_values.isna().any():
+    parseable_mask = numeric_values.notna()
+
+    if not parseable_mask.any():
         return "unknown"
 
-    # Example:
-    # 10, 20, 30 -> integer
-    # 10.5, 20.5 -> float
-    if (numeric_values % 1 == 0).all():
+    parseable_percentage = (
+        parseable_mask.mean() * 100
+    )
+
+    if parseable_percentage < 70:
+        return "unknown"
+
+    valid_numeric_values = numeric_values[
+        parseable_mask
+    ]
+
+    if (
+        valid_numeric_values % 1 == 0
+    ).all():
         return "integer"
 
     return "float"
 
-# 5. DATETIME PARSEABILITY
+
+# ============================================================
+# 4. DATETIME ANALYSIS
+# ============================================================
 
 def get_datetime_parseable_percentage(
     series: pd.Series
 ) -> float:
     """
-    Calculate the percentage of non-null values
-    that can be parsed as datetime.
+    Calculate the percentage of semantic non-null values
+    that can be interpreted as datetime.
 
-    The original Series is not modified.
+    Numeric columns are deliberately excluded because
+    Pandas can interpret ordinary numbers as timestamps.
     """
 
-    normalized = normalize_for_inference(series)
+    # IMPORTANT:
+    # Do not try to interpret ordinary numeric columns
+    # as dates.
+    if pd.api.types.is_numeric_dtype(series):
+        return 0.0
 
-    non_null = normalized.dropna()
+    if pd.api.types.is_bool_dtype(series):
+        return 0.0
+
+    non_null = _get_semantic_non_null_values(series)
 
     if non_null.empty:
         return 0.0
 
     datetime_values = pd.to_datetime(
         non_null,
-        errors="coerce"
+        errors="coerce",
+        format="mixed"
     )
 
     return float(
@@ -163,180 +274,209 @@ def get_datetime_parseable_percentage(
     )
 
 
-# 6. CASE VARIATION DETECTION
-
-def has_case_variations(series: pd.Series) -> bool:
-    """
-    Detect whether the column contains values that differ
-    only because of letter casing.
-
-    Example:
-
-        "Pune"
-        "pune"
-        "PUNE"
-
-    Case is NOT changed in the original data.
-    """
-
-    normalized = normalize_for_inference(series)
-
-    non_null = normalized.dropna()
-
-    string_values = non_null[
-        non_null.map(
-            lambda value: isinstance(value, str)
-        )
-    ]
-
-    if string_values.empty:
-        return False
-
-    # Lowercase is used only for comparison.
-    case_insensitive_values = string_values.map(
-        lambda value: value.lower()
-    )
-
-    return (
-        case_insensitive_values.nunique()
-        < string_values.nunique()
-    )
-
-# 7. WHITESPACE DETECTION
-
-def has_whitespace(series: pd.Series) -> bool:
-    """
-    Detect leading or trailing whitespace
-    in string values.
-
-    The original values are not modified.
-    """
-
-    non_null = series.dropna()
-
-    string_values = non_null[
-        non_null.map(
-            lambda value: isinstance(value, str)
-        )
-    ]
-
-    if string_values.empty:
-        return False
-
-    return string_values.map(
-        lambda value: value != value.strip()
-    ).any()
-
-
-# 8. EMPTY STRING DETECTION
-
-def has_empty_strings(series: pd.Series) -> bool:
-    """
-    Detect empty or whitespace-only strings.
-
-    Examples:
-        ""
-        " "
-        "    "
-
-    These are not treated as normal missing values yet.
-    They are simply detected and reported.
-    """
-
-    non_null = series.dropna()
-
-    string_values = non_null[
-        non_null.map(
-            lambda value: isinstance(value, str)
-        )
-    ]
-
-    if string_values.empty:
-        return False
-
-    return string_values.map(
-        lambda value: value.strip() == ""
-    ).any()
-
-
-# 9. BOOLEAN PARSEABILITY
-
+# ============================================================
+# 5. BOOLEAN ANALYSIS
+# ============================================================
 
 def get_boolean_parseable_percentage(
     series: pd.Series
 ) -> float:
     """
-    Calculate the percentage of non-null values that
-    match common boolean representations.
+    Calculate the percentage of semantic non-null values
+    that represent boolean-like values.
 
-    Case is ignored only for comparison.
-
-    The original data is not modified.
-
-    Supported representations include:
+    Supported representations:
 
         True / False
-        true / false
-        yes / no
-        y / n
+        Yes / No
+        Y / N
         1 / 0
     """
 
-    normalized = normalize_for_inference(series)
-
-    non_null = normalized.dropna()
+    non_null = _get_semantic_non_null_values(series)
 
     if non_null.empty:
         return 0.0
 
-    boolean_values = {
-        "true",
-        "false",
-        "yes",
-        "no",
-        "y",
-        "n",
-        "1",
-        "0"
-    }
-
-    def is_boolean(value) -> bool:
+    def is_boolean_like(value) -> bool:
 
         if isinstance(value, bool):
             return True
 
         if isinstance(value, str):
-            return value.lower() in boolean_values
+            return (
+                value.strip().lower()
+                in BOOLEAN_VALUES
+            )
 
-        if isinstance(value, int) and value in {0, 1}:
-            return True
+        if isinstance(value, int):
+            return value in (0, 1)
 
         return False
 
-    parseable_count = sum(
-        is_boolean(value)
-        for value in non_null
+    boolean_mask = non_null.map(
+        is_boolean_like
     )
 
     return float(
-        (parseable_count / len(non_null)) * 100
+        boolean_mask.mean() * 100
     )
 
-# 10. MIXED-TYPE DETECTION
 
-def has_mixed_types(series: pd.Series) -> bool:
+# ============================================================
+# 6. PERCENTAGE DETECTION
+# ============================================================
+
+def get_percentage_parseable_percentage(
+    series: pd.Series
+) -> float:
     """
-    Detect whether a column contains multiple Python-level
-    value types.
+    Calculate the percentage of semantic non-null values
+    that look like percentages.
+
+    Examples:
+
+        10%
+        25.5%
+        -5%
+
+    No conversion is performed.
+    """
+
+    non_null = _get_semantic_non_null_values(series)
+
+    if non_null.empty:
+        return 0.0
+
+    def is_percentage(value) -> bool:
+
+        if not isinstance(value, str):
+            return False
+
+        return bool(
+            PERCENTAGE_PATTERN.match(
+                value.strip()
+            )
+        )
+
+    percentage_mask = non_null.map(
+        is_percentage
+    )
+
+    return float(
+        percentage_mask.mean() * 100
+    )
+
+
+# ============================================================
+# 7. CURRENCY DETECTION
+# ============================================================
+
+def get_currency_parseable_percentage(
+    series: pd.Series
+) -> float:
+    """
+    Calculate the percentage of semantic non-null values
+    that look like currency values.
+
+    Examples:
+
+        $1,000
+        €2500
+        £500.50
+        ₹10,000
+
+    No conversion is performed.
+    """
+
+    non_null = _get_semantic_non_null_values(series)
+
+    if non_null.empty:
+        return 0.0
+
+    def is_currency(value) -> bool:
+
+        if not isinstance(value, str):
+            return False
+
+        return bool(
+            CURRENCY_PATTERN.match(
+                value.strip()
+            )
+        )
+
+    currency_mask = non_null.map(
+        is_currency
+    )
+
+    return float(
+        currency_mask.mean() * 100
+    )
+
+
+# ============================================================
+# 8. CASE VARIATION
+# ============================================================
+
+def has_case_variations(
+    series: pd.Series
+) -> bool:
+    """
+    Detect whether values differ only by letter casing.
 
     Example:
 
-        10
-        20
-        "unknown"
-        40.5
+        Pune
+        pune
+        PUNE
 
-    Such columns may require additional preprocessing.
+    returns True.
+
+    Case is NOT changed in the original data.
+    """
+
+    non_null = series.dropna()
+
+    string_values = non_null[
+        non_null.map(
+            lambda value:
+            isinstance(value, str)
+        )
+    ]
+
+    if string_values.empty:
+        return False
+
+    normalized = string_values.map(
+        lambda value:
+        value.strip().lower()
+    )
+
+    return (
+        normalized.nunique()
+        < string_values.nunique()
+    )
+
+
+# ============================================================
+# 9. MIXED TYPES
+# ============================================================
+
+def has_mixed_types(
+    series: pd.Series
+) -> bool:
+    """
+    Detect multiple Python-level types.
+
+    Example:
+
+        100
+        "200"
+        300
+
+    returns True.
+
+    This does NOT mean semantic type is unknown.
     """
 
     non_null = series.dropna()
@@ -344,20 +484,22 @@ def has_mixed_types(series: pd.Series) -> bool:
     if non_null.empty:
         return False
 
-    value_types = non_null.map(
-        lambda value: type(value).__name__
+    python_types = non_null.map(
+        lambda value: type(value)
     )
 
-    return value_types.nunique() > 1
+    return python_types.nunique() > 1
 
 
-# 11. CONSTANT COLUMN DETECTION
+# ============================================================
+# 10. CONSTANT COLUMN
+# ============================================================
 
-
-def is_constant(series: pd.Series) -> bool:
+def is_constant(
+    series: pd.Series
+) -> bool:
     """
-    Determine whether a column contains only one
-    unique non-null value.
+    Determine whether all non-null values are identical.
     """
 
     non_null = series.dropna()
@@ -368,19 +510,30 @@ def is_constant(series: pd.Series) -> bool:
     return non_null.nunique() == 1
 
 
-# 12. POTENTIAL ID DETECTION
+# ============================================================
+# 11. POTENTIAL ID
+# ============================================================
 
-def is_potential_id(series: pd.Series) -> bool:
+def is_potential_id(
+    series: pd.Series
+) -> bool:
     """
-    Detect whether a column may represent an identifier.
+    Heuristically determine whether a column may be an ID.
 
-    A potential ID generally has:
-        - very high uniqueness
-        - relatively few duplicate values
-        - non-null values
+    IMPORTANT:
 
-    This is only an observation.
-    It does not guarantee that the column is an ID.
+    Uniqueness alone is NOT enough.
+
+    Numeric analytical columns such as:
+
+        Age
+        Salary
+        Experience
+
+    should not become IDs merely because their values
+    happen to be unique.
+
+    Strong column-name signals are preferred.
     """
 
     non_null = series.dropna()
@@ -388,114 +541,216 @@ def is_potential_id(series: pd.Series) -> bool:
     if non_null.empty:
         return False
 
-    unique_percentage = (
-        non_null.nunique()
-        / len(non_null)
-    ) * 100
+    if is_constant(series):
+        return False
 
-    return unique_percentage >= 95.0
+    column_name = str(
+        series.name
+    ).strip().lower()
 
-# 13. CATEGORICAL VS TEXT
+    id_keywords = (
+        "id",
+        "identifier",
+        "uuid",
+        "guid",
+        "customer_code",
+        "employee_code",
+        "product_code",
+        "account_number",
+        "reference_number",
+    )
+
+    # Strong semantic name signal.
+    if any(
+        keyword in column_name
+        for keyword in id_keywords
+    ):
+        return True
+
+    # Generic names such as "number" or "no"
+    # are intentionally NOT enough.
+    #
+    # This prevents:
+    #
+    # Age → ID
+    # Salary → ID
+    # Experience → ID
+
+    return False
+
+
+# ============================================================
+# 12. CATEGORICAL VS TEXT
+# ============================================================
 
 def infer_categorical_or_text(
     series: pd.Series
 ) -> str:
     """
-    Distinguish between categorical and text-like
-    string columns.
-
-    Heuristic:
-        - Low/moderate cardinality -> categorical
-        - High cardinality -> text
-
-    This is an inference, not a final decision.
+    Distinguish categorical values from free-form text.
     """
 
-    normalized = normalize_for_inference(series)
-
-    non_null = normalized.dropna()
+    non_null = _get_semantic_non_null_values(series)
 
     if non_null.empty:
         return "unknown"
 
-    if not non_null.map(
-        lambda value: isinstance(value, str)
-    ).all():
-        return "unknown"
-
-    unique_count = non_null.nunique()
-
-    unique_percentage = (
-        unique_count / len(non_null)
-    ) * 100
-
-    # Low/moderate cardinality.
-    if unique_count <= 50 or unique_percentage <= 10:
+    if is_constant(series):
         return "categorical"
 
-    return "text"
+    string_values = non_null[
+        non_null.map(
+            lambda value:
+            isinstance(value, str)
+        )
+    ]
+
+    if string_values.empty:
+        return "unknown"
+
+    unique_ratio = (
+        string_values.nunique()
+        / len(string_values)
+    )
+
+    average_length = (
+        string_values
+        .map(len)
+        .mean()
+    )
+
+    # Long, highly unique strings are likely free-form text.
+    if (
+        unique_ratio >= 0.70
+        and average_length >= 30
+    ):
+        return "text"
+
+    return "categorical"
 
 
-# 14. MAIN SEMANTIC TYPE INFERENCE
+# ============================================================
+# 13. MAIN SEMANTIC TYPE INFERENCE
+# ============================================================
 
-
-def infer_semantic_type(series: pd.Series) -> str:
+def infer_semantic_type(
+    series: pd.Series
+) -> str:
     """
-    Infer the semantic type of a column.
+    Determine the semantic type represented by a column.
 
-    The function first trusts reliable Pandas dtypes.
-    For object/string columns, it inspects the actual
-    values and uses additional evidence.
+    Possible results:
 
-    Returns one of:
-
+        boolean
         integer
         float
-        boolean
         datetime
         timedelta
         complex
+        percentage
+        currency
         categorical
         text
         unknown
     """
 
+    if series.dropna().empty:
+        return "unknown"
+
+    # --------------------------------------------------------
+    # Reliable Pandas types
+    # --------------------------------------------------------
+
     basic_type = infer_basic_type(series)
 
-    # Pandas already knows the type.
     if basic_type != "unknown":
         return basic_type
 
-    normalized = normalize_for_inference(series)
+    # --------------------------------------------------------
+    # Constant values
+    # --------------------------------------------------------
 
-    non_null = normalized.dropna()
+    # Constant values are treated as categorical because
+    # one repeated value is not enough evidence to determine
+    # semantic meaning.
+    if is_constant(series):
+        return "categorical"
 
-    if non_null.empty:
-        return "unknown"
+    # --------------------------------------------------------
+    # Percentage
+    # --------------------------------------------------------
 
-    numeric_percentage = (
-        get_numeric_parseable_percentage(series)
+    percentage_percentage = (
+        get_percentage_parseable_percentage(
+            series
+        )
     )
 
-    if numeric_percentage == 100.0:
-        return infer_numeric_string_type(series)
+    if percentage_percentage >= 70:
+        return "percentage"
 
-    datetime_percentage = (
-        get_datetime_parseable_percentage(series)
+    # --------------------------------------------------------
+    # Currency
+    # --------------------------------------------------------
+
+    currency_percentage = (
+        get_currency_parseable_percentage(
+            series
+        )
     )
 
-    if datetime_percentage == 100.0:
-        return "datetime"
+    if currency_percentage >= 70:
+        return "currency"
+
+    # --------------------------------------------------------
+    # Boolean
+    # --------------------------------------------------------
 
     boolean_percentage = (
-        get_boolean_parseable_percentage(series)
+        get_boolean_parseable_percentage(
+            series
+        )
     )
 
-    if boolean_percentage == 100.0:
+    if boolean_percentage >= 70:
         return "boolean"
 
-    categorical_or_text = (
-        infer_categorical_or_text(series)
+    # --------------------------------------------------------
+    # Numeric
+    # --------------------------------------------------------
+
+    numeric_percentage = (
+        get_numeric_parseable_percentage(
+            series
+        )
     )
 
-    return categorical_or_text
+    if numeric_percentage >= 70:
+
+        numeric_type = (
+            infer_numeric_string_type(
+                series
+            )
+        )
+
+        if numeric_type != "unknown":
+            return numeric_type
+
+    # --------------------------------------------------------
+    # Datetime
+    # --------------------------------------------------------
+
+    datetime_percentage = (
+        get_datetime_parseable_percentage(
+            series
+        )
+    )
+
+    if datetime_percentage >= 70:
+        return "datetime"
+
+    # --------------------------------------------------------
+    # Categorical / Text
+    # --------------------------------------------------------
+
+    return infer_categorical_or_text(series)
