@@ -117,13 +117,13 @@ Phase 10 → FastAPI + Next.js
 
 1. **Data Upload** — user provides a CSV, Excel file, or spreadsheet.
 2. **Ingestion & Parsing** — file is loaded and normalized into a working format.
-3. **Semantic Profiling** — custom type inference per column (not just Pandas dtypes) plus data-quality detection: missing values, whitespace, inconsistent formats, numeric/datetime stored as strings, boolean-like values, potential ID columns, duplicates.
+3. **Semantic Profiling** — custom type inference per column (not just Pandas dtypes) plus data-quality detection: missing values, whitespace, inconsistent formats, numeric/datetime stored as strings, boolean-like values, potential ID columns, duplicates. Missing values and null-like markers are reported with counts and percentages; they are not automatically filled or replaced.
 4. **Rule Engine** — deterministic rules convert profiling findings into candidate preprocessing actions.
 5. **LangChain + LLM Decision Reasoning** — the LLM reasons over candidate actions, selects and prioritizes them, and explains why.
 6. **Confidence Check** — each selected action is scored:
    - **High confidence** → applied automatically to an internal copy of the data.
    - **Low confidence** → flagged for user review instead of auto-applied.
-7. **Clean Internal Data** — the original uploaded dataset remains untouched; only an internal copy is modified.
+7. **Clean Internal Data** — the original uploaded dataset remains untouched; only an internal copy is modified. Null and null-like values remain available for reporting and do not block visualization or insight recommendations.
 8. **Statistical Engine** — computes descriptive statistics, distributions, outliers, skewness, and correlations on the cleaned data.
 9. **Visualization Rules** — a fully rule-based (non-LLM) module recommends visualizations based on actual dataset structure and statistics.
 10. **Evidence Dictionary** — all computed facts (stats, quality findings, visualization picks) are collected into a single grounded evidence source.

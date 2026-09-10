@@ -2,7 +2,7 @@ import pandas as pd
 
 from app.profiling.dataset_profiler import profile_dataset
 
-
+from app.preprocessing.preprocessor import preprocess_dataset
 from app.preprocessing.rule_engine import (
     generate_preprocessing_plan
 )
@@ -454,6 +454,11 @@ if __name__ == "__main__":
         profile
     )
 
+    cleaned_df, result = preprocess_dataset(
+        df,
+        plan
+    )
+
     # --------------------------------------------------------
     # Display preprocessing actions
     # --------------------------------------------------------
@@ -478,3 +483,49 @@ if __name__ == "__main__":
     print("\n")
     print("Reasoning:", plan.reasoning)
     print("Source:", plan.source)
+
+    print("\n")
+    print("=" * 70)
+    print("PREPROCESSING RESULT")
+    print("=" * 70)
+
+    print("\nEXECUTED ACTIONS")
+    print("-" * 70)
+
+    for action in result.executed_actions:
+        print(
+            f"Column: {action.columns}"
+        )
+        print(
+            f"Action: {action.action}"
+        )
+        print(
+            f"Reason: {action.reason}"
+        )
+        print()
+
+    print("\nSKIPPED ACTIONS")
+    print("-" * 70)
+
+    for action in result.skipped_actions:
+        print(
+            f"Column: {action.columns}"
+        )
+        print(
+            f"Action: {action.action}"
+        )
+        print(
+            f"Reason: {action.reason}"
+        )
+        print()
+
+    print("\nCHANGES")
+    print("-" * 70)
+
+    for change in result.changes:
+        print(change)
+
+    print("\nCLEANED DATASET")
+    print("-" * 70)
+
+    print(cleaned_df)

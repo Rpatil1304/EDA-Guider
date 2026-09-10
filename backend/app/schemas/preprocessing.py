@@ -18,6 +18,7 @@ class PreprocessingAction(BaseModel):
     parameters: dict = Field(
         default_factory=dict
     )
+    confidence: float = 0.0
     reason: str
 
 
@@ -29,3 +30,28 @@ class PreprocessingPlan(BaseModel):
 
     reasoning: str
     source: str
+
+
+class PreprocessingResult(BaseModel):
+
+    # Actions that were actually executed
+    executed_actions: list[PreprocessingAction] = Field(
+        default_factory=list
+    )
+
+    # Actions that were skipped because they
+    # require review or are not safe to execute
+    skipped_actions: list[PreprocessingAction] = Field(
+        default_factory=list
+    )
+
+    # Information about changes made during preprocessing
+    changes: list[dict] = Field(
+        default_factory=list
+    )
+
+    # Overall explanation of what happened
+    reasoning: str = ""
+
+    # Identifies the component that performed preprocessing
+    source: str = "preprocessor"
