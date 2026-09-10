@@ -3,6 +3,7 @@ from io import BytesIO
 import pandas as pd
 
 from app.preprocessing.pipeline import run_preprocessing_pipeline
+from app.reporting import generate_eda_guide_report
 
 
 _REQUIRED_KEYS = {
@@ -73,3 +74,18 @@ def test_run_preprocessing_pipeline_stops_with_structured_ingestion_error():
     assert result["preprocessing_summary_report"] is None
     assert result["pipeline_error"]["stage"] == "ingestion"
     assert result["pipeline_error"]["message"]
+
+
+def test_eda_guide_report_contains_completed_stages_and_next_steps(tmp_path):
+    uploaded = BytesIO(b"name,amount\nA,10\nB,20\n")
+    uploaded.name = "sample.csv"
+    result = run_preprocessing_pipeline(uploaded)
+    output_path = tmp_path / "eda_report.md"
+
+    report = generate_eda_guide_report(result, output_path)
+
+    assert output_path.read_text(encoding="utf-8") == report
+    assert "## Part 1 - File ingestion" in report
+    assert "## Part 6 - Before-and-after summary" in report
+    assert "## Part 7 - Next EDA steps" in report
+    assert "Visualization recommendations" in report

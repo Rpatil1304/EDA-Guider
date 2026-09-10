@@ -1,4 +1,4 @@
-"""Run Parts 1-7 of EDA-Guider against one local CSV or Excel file.
+"""Run the implemented EDA-Guider stages against one local CSV or Excel file.
 
 Edit CSV_PATH below, then run from the backend directory:
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.preprocessing.pipeline import run_preprocessing_pipeline
+from app.reporting import generate_eda_guide_report
 
 
 # Edit this path. Absolute paths and paths relative to the backend directory work.
@@ -69,17 +70,17 @@ def main() -> None:
                 "unique_count": column.get("unique_count"),
                 "sample_values": column.get("sample_values"),
             })
-            print("\nNull-value summary:")
-            print(raw_profile.get("null_summary", {}))
-            for column in raw_profile.get("columns", []):
-                if column.get("null_count") or column.get("null_like_count"):
-                    print({
-                        "column": column.get("name"),
-                        "actual_null_count": column.get("null_count"),
-                        "actual_null_percentage": column.get("null_percentage"),
-                        "null_like_count": column.get("null_like_count"),
-                        "null_like_breakdown": column.get("null_like_breakdown"),
-                    })
+        print("\nNull-value summary:")
+        print(raw_profile.get("null_summary", {}))
+        for column in raw_profile.get("columns", []):
+            if column.get("null_count") or column.get("null_like_count"):
+                print({
+                    "column": column.get("name"),
+                    "actual_null_count": column.get("null_count"),
+                    "actual_null_percentage": column.get("null_percentage"),
+                    "null_like_count": column.get("null_like_count"),
+                    "null_like_breakdown": column.get("null_like_breakdown"),
+                })
         if raw_profile.get("warnings"):
             print("\nRaw-profile warnings:")
             for warning in raw_profile["warnings"]:
@@ -127,6 +128,11 @@ def main() -> None:
         print_section("CLEANED DATAFRAME PREVIEW")
         print(cleaned.head(10).to_string(index=False))
         print(f"\nShape: {cleaned.shape[0]} rows x {cleaned.shape[1]} columns")
+
+        report_path = CSV_PATH.with_name(f"{CSV_PATH.stem}_eda_report.md")
+        generate_eda_guide_report(result, report_path)
+        print_section("EDA REPORT")
+        print(f"Saved step-by-step EDA report to: {report_path}")
 
 
 if __name__ == "__main__":
