@@ -76,6 +76,21 @@ def generate_preprocessing_plan_from_raw_profile(
                 actions, column, "strip_whitespace", confidence,
                 f"Detected leading or trailing whitespace in {whitespace_count} value(s).",
             )
+        if profile.get("null_like_count", 0):
+            _add_action(
+                actions, column, "replace_null_like", 100.0,
+                f"Detected {profile['null_like_count']} null-like value(s).",
+            )
+        if profile.get("empty_string_count", 0):
+            _add_action(
+                actions, column, "replace_empty_strings", 100.0,
+                f"Detected {profile['empty_string_count']} empty or whitespace-only value(s).",
+            )
+        if profile.get("is_index_like"):
+            _add_action(
+                actions, column, "review_index_column", 100.0,
+                "The column looks like an exported row index; review whether it should be removed.",
+            )
         if profile.get("is_likely_id"):
             _add_action(
                 actions, column, "preserve_identifier", unique_ratio * 100,
@@ -108,6 +123,12 @@ def generate_preprocessing_plan_from_raw_profile(
             _add_action(
                 actions, column, "preserve_free_text", unique_ratio * 100,
                 "The column has high cardinality and variable-length string values, so it is likely free text.",
+            )
+        if profile.get("has_case_variations") and profile.get("is_categorical"):
+            _add_action(
+                actions, column, "normalize_case", 100.0,
+                "Categorical values contain inconsistent capitalization.",
+                {"strategy": "lower"},
             )
 
     return PreprocessingPlan(

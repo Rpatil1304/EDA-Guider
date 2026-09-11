@@ -1,0 +1,37 @@
+,country_name,Continent,region,area,population,population_per_sq_km,male_life_expectancy,female_life_expectancy,birth_rate,death_rate
+0,Austria,Europe,Western Europe,"83,879 km²","89,17,000",106.3,78.9,83.6,9.4,10.3
+1,Belgium,Europe,Western Europe,"30,530 km²","1,15,44,000",378.1,78.6,83.1,9.9,11
+2,France,Europe,Western Europe,"549,087 km²","6,73,80,000",122.7,79.2,85.3,10.9,9.9
+3,Germany,Europe,Western Europe,"357,580 km²","8,31,61,000",232.6,78.6,83.4,9.3,11.9
+4,Liechtenstein,Europe,Western Europe,161 km²,"38,137",237.6,80.1,83.6,9.1,8.2
+5,Luxembourg,Europe,Western Europe,"2,590 km²","6,30,419",243.4,79.4,84.2,10.2,7.3
+6,Netherlands,Europe,Western Europe,"41,543 km²","1,74,42,000",419.8,79.8,83.1,9.7,9.7
+7,Switzerland,Europe,Western Europe,"41,290 km²","86,37,000",209.2,81.1,85.2,9.9,8.8
+8,Belarus,Europe,Eastern Europe,"207,600 km²","93,80,000",45.18,69.3,79.4,9.3,13
+9,Bulgaria,Europe,Eastern Europe,"111,000 km²","69,34,000",62.47,69.9,77.5,8.5,18
+10,Czechia,Europe,Eastern Europe,"78,870 km²","1,06,98,000",135.6,75.3,81.3,10.3,12.1
+11,Hungary,Europe,Eastern Europe,"93,030 km²","97,50,000",104.8,72.3,79.1,9.6,14.5
+12,Moldova,Europe,Eastern Europe,"33,850 km²","26,20,000",77.41,67.7,76.3,9.8,11.8
+13,Poland,Europe,Eastern Europe,"312,680 km²","3,78,99,000",121.2,72.6,80.8,9.4,12.6
+14,Romania,Europe,Eastern Europe,"238,400 km²","1,92,58,000",80.78,70.5,78.4,9.2,15.4
+15,Russia,Europe,Eastern Europe,"17,098,250 km²","14,41,04,000",8.428,66.5,76.4,9.8,14.6
+16,Slovakia,Europe,Eastern Europe,"49,030 km²","54,59,000",111.3,73.5,80.4,10.4,10.8
+17,Ukraine,Europe,Eastern Europe,"603,550 km²","4,41,35,000",73.13,66.4,76.2,7.8,15.9
+18,Denmark,Europe,Northern Europe,"42,920 km²","58,31,000",135.9,79.6,83.6,10.4,9.4
+19,Estonia,Europe,Northern Europe,"45,340 km²","13,29,000",29.32,74.2,82.7,9.9,11.9
+20,Finland,Europe,Northern Europe,"338,450 km²","55,30,000",16.34,79.4,85,8.4,10
+21,Iceland,Europe,Northern Europe,"103,000 km²","3,66,463",3.558,81.7,84.5,12.3,6.3
+22,Ireland,Europe,Northern Europe,"70,280 km²","49,86,000",70.94,80.4,84.1,11.2,6.4
+23,Latvia,Europe,Northern Europe,"64,490 km²","19,00,000",29.47,70.9,80.1,9.2,15.2
+24,Lithuania,Europe,Northern Europe,"65,286 km²","27,95,000",42.81,70.1,80,9,15.6
+25,Norway,Europe,Northern Europe,"385,203 km²","53,79,000",13.97,81.6,84.9,9.8,7.5
+26,Sweden,Europe,Northern Europe,"447,430 km²","1,03,53,000",23.14,80.7,84.2,10.9,9.5
+27,United Kingdom,Europe,Northern Europe,"243,610 km²","6,72,15,000",275.9,79,82.9,10.2,10.4
+28,Albania,Europe,Southern Europe,"28,750 km²","28,38,000",98.71,77.2,80.3,11.5,8.3
+29,Greece,Europe,Southern Europe,"131,960 km²","1,07,01,000",81.09,78.6,83.7,7.9,12.2
+30,Malta,Europe,Southern Europe,320 km²,"5,15,332","1,610",80.8,84.6,8.6,7.9
+31,Montenegro,Europe,Southern Europe,"13,810 km²","6,21,306",44.99,73.2,78.8,11.4,11.7
+32,Portugal,Europe,Southern Europe,"92,226 km²","1,02,97,000",111.7,78,84.1,8.2,12
+33,Serbia,Europe,Southern Europe,"88,360 km²","68,99,000",78.08,71.4,77.2,8.9,16.9
+34,Slovenia,Europe,Southern Europe,"20,675 km²","21,02,000",101.7,77.8,83.4,8.9,11.4
+35,Spain,Europe,Southern Europe,"505,935 km²","4,73,63,000",93.62,79.7,85.1,7.1,10.4

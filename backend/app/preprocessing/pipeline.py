@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.execution.validator import Validator
 from app.ingestion.loader import load_file
 from app.preprocessing.preprocessor import execute_preprocessing_plan
 from app.preprocessing.summary import build_preprocessing_summary_report
@@ -102,6 +103,13 @@ def run_preprocessing_pipeline(
         )
         result["execution_log"] = execution_log
         result["cleaned_dataframe"] = cleaned_dataframe
+        validation = Validator.compare(dataframe, cleaned_dataframe)
+        if not validation["valid"]:
+            return _failure(
+                result,
+                "preprocessing_validation",
+                ValueError(" ".join(validation["errors"])),
+            )
     except Exception as error:
         return _failure(result, "preprocessing_execution", error)
 

@@ -125,9 +125,18 @@ def _sniff_csv(raw: bytes, encoding: str) -> tuple[str, bool, list[str]]:
     if not sample.strip():
         raise ValueError("The uploaded CSV file is empty.")
 
-    try:
-        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|:").delimiter
-    except csv.Error:
+    candidates = ",;\t|:"
+    scored_delimiters = []
+    for candidate in candidates:
+        rows = list(csv.reader(io.StringIO(sample), delimiter=candidate))
+        widths = [len(row) for row in rows if any(cell.strip() for cell in row)]
+        if not widths:
+            continue
+        consistent_rows = sum(width == widths[0] for width in widths)
+        scored_delimiters.append((consistent_rows, widths[0] > 1, candidate))
+    if scored_delimiters:
+        delimiter = max(scored_delimiters, key=lambda item: (item[1], item[0]))[2]
+    else:
         delimiter = ","
         warnings.append("Delimiter sniffing failed; comma was used as the fallback.")
 

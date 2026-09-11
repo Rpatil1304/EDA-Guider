@@ -10,7 +10,9 @@ def _format_value(value: Any) -> str:
     if value is None:
         return "None"
     if isinstance(value, list):
-        return ", ".join(str(item) for item in value) or "None"
+        if not value:
+            return "None"
+        return ", ".join("<blank>" if item == "" else str(item) for item in value)
     return str(value)
 
 
@@ -72,6 +74,7 @@ def generate_eda_guide_report(
         f"- Duplicate columns: {_format_value(structural.get('duplicate_columns'))}",
         f"- Warnings: {_format_value(structural.get('warnings'))}",
         f"- Errors: {_format_value(structural.get('errors'))}",
+        f"- Index-like columns retained for review: {_format_value(structural.get('index_like_columns'))}",
         "",
         "## Part 3 - Raw data profile",
         "",
@@ -93,8 +96,9 @@ def generate_eda_guide_report(
         f"- Columns with actual nulls: {_format_value(null_summary.get('columns_with_nulls'))}",
         f"- Columns with null-like values: {_format_value(null_summary.get('columns_with_null_like_values'))}",
         "",
-        "Null and null-like values are reported, not automatically filled or "
-        "replaced. They do not prevent later visualization or insight analysis.",
+        "Raw null and null-like values are reported first. Where the rule engine "
+        "detects them, the internal copy may replace them while preserving the "
+        "uploaded source file.",
         "",
         "### Column profile",
         "",
@@ -159,6 +163,7 @@ def generate_eda_guide_report(
         f"- Cleaned shape: {_format_value(summary.get('cleaned_row_count'))} rows x "
         f"{_format_value(summary.get('cleaned_column_count'))} columns",
         f"- Changed columns: {_format_value(summary.get('changed_column_count'))}",
+        f"- Cleaned missing values: {_format_value((summary_report.get('cleaned_profile') or {}).get('null_summary', {}).get('total_missing_count'))}",
         "",
         "## Part 7 - Next EDA steps",
         "",

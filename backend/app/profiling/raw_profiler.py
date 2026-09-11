@@ -7,6 +7,8 @@ import re
 
 import pandas as pd
 
+from app.profiling.parsing import numeric_parse_mask
+
 
 _HIGH_CARDINALITY_RATIO = 0.90
 _HIGH_CORRELATION_THRESHOLD = 0.95
@@ -76,13 +78,17 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
     empty_string_count = int(
         sum(value.strip() == "" for value in string_values.tolist())
     )
-    non_null_count = len(values)
-    numeric_like_count = int(
-        sum(
-            bool(_NUMERIC_PATTERN.match(value.strip()))
-            for value in string_values.tolist()
-        )
+    non_null_types = {type(value).__name__ for value in values.tolist()}
+    lower_values = {
+        value.strip().lower()
+        for value in string_values.tolist()
+        if value.strip()
+    }
+    case_variation = len(lower_values) < len(
+        {value.strip() for value in string_values.tolist() if value.strip()}
     )
+    non_null_count = len(values)
+    numeric_like_count = int(numeric_parse_mask(values).sum())
     datetime_like_count = 0
     if not pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
         parsed_datetimes = pd.to_datetime(
@@ -105,6 +111,11 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         string_values.map(len).nunique() > 1 if string_count else False
     )
     id_name_signal = bool(_ID_NAME_PATTERN.search(str(series.name)))
+    index_like = (
+        str(series.name).strip().lower() in {"", "unnamed: 0", "index"}
+        and pd.api.types.is_numeric_dtype(series)
+        and series.reset_index(drop=True).equals(pd.Series(range(row_count)))
+    )
 
     warnings: list[str] = []
     if null_percentage >= _HIGH_MISSING_RATIO * 100:
@@ -125,6 +136,9 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         "null_like_breakdown": null_like_breakdown,
         "whitespace_count": whitespace_count,
         "empty_string_count": empty_string_count,
+        "mixed_type_count": len(non_null_types),
+        "has_mixed_types": len(non_null_types) > 1,
+        "has_case_variations": case_variation,
         "numeric_like_percentage": round(
             numeric_like_count / non_null_count * 100, 4
         ) if non_null_count else 0.0,
@@ -139,6 +153,7 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
             and unique_ratio >= _HIGH_CARDINALITY_RATIO
             and id_name_signal
         ),
+        "is_index_like": bool(index_like),
         "is_categorical": bool(
             row_count > 0 and unique_ratio <= 0.20 and unique_count > 1
         ),

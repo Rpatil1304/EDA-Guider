@@ -107,6 +107,22 @@ def validate_structure(
             "Duplicate column names were renamed with deterministic suffixes."
         )
 
+    index_like_columns = [
+        str(column)
+        for column in normalized.columns
+        if str(column).strip().lower() in {"", "unnamed: 0", "index"}
+        and pd.api.types.is_numeric_dtype(normalized[column])
+        and normalized[column].reset_index(drop=True).equals(
+            pd.Series(range(len(normalized)), index=normalized.index)
+        )
+    ]
+    if index_like_columns:
+        report["warnings"].append(
+            "Index-like columns were detected and retained for review: "
+            + ", ".join(index_like_columns)
+        )
+    report["index_like_columns"] = index_like_columns
+
     if len(normalized) == 1:
         report["warnings"].append(
             "The dataset contains only one row; statistical conclusions may be limited."

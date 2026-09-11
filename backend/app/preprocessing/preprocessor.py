@@ -1,5 +1,7 @@
 import pandas as pd
 
+from app.profiling.parsing import parse_numeric_series
+
 from app.schemas.preprocessing import (
     PreprocessingAction,
     PreprocessingPlan,
@@ -117,7 +119,8 @@ def convert_to_numeric(
     """
     Convert selected columns to numeric values.
 
-    Invalid values become NaN.
+    Values that do not parse are represented as NA; the plan executor
+    rejects conversions that would lose non-null values.
 
     This operation should only be called when the
     rule engine has already determined that conversion
@@ -131,10 +134,7 @@ def convert_to_numeric(
         if column not in df.columns:
             continue
 
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="coerce"
-        )
+        df[column] = parse_numeric_series(df[column])
 
     return df
 
@@ -523,6 +523,28 @@ def execute_preprocessing_plan(
             changed = int((before_values.astype("string") != cleaned[column].astype("string")).fillna(False).sum())
             log([column], action_name, "executed", reason, values_changed=changed)
 
+    # Convert explicit textual missing markers only when the profile found them.
+    for action_name, operation, reason in (
+        ("replace_null_like", replace_null_like, "Replaced explicit null-like text with missing values."),
+        ("replace_empty_strings", replace_empty_strings, "Replaced empty or whitespace-only strings with missing values."),
+    ):
+        for action in actions:
+            if action.action != action_name:
+                continue
+            columns = safe_columns(action.columns)
+            if not columns:
+                log(action.columns, action_name, "skipped", "No matching columns were found.")
+                continue
+            before_values = cleaned[columns].copy(deep=True)
+            cleaned = operation(cleaned, columns)
+            changed = int(
+                (before_values.astype("string") != cleaned[columns].astype("string"))
+                .fillna(False)
+                .sum()
+                .sum()
+            )
+            log(columns, action_name, "executed", reason, values_changed=changed)
+
     # 1. Strip whitespace from every string/object column.
     apply_string_step(
         "strip_whitespace",
@@ -595,15 +617,21 @@ def execute_preprocessing_plan(
                     else pd.NA
                 )
             else:
-                converted = conversion_actions[action.action](cleaned[column], errors="coerce")
+                if action.action == "convert_to_numeric":
+                    converted = parse_numeric_series(cleaned[column])
+                else:
+                    converted = conversion_actions[action.action](cleaned[column], errors="coerce")
             null_after = float(converted.isna().mean())
             loss = null_after - null_before
-            if loss > data_loss_threshold:
+            invalid_non_null_count = int(
+                cleaned[column].notna().sum() - converted.notna().sum()
+            )
+            if invalid_non_null_count > 0 or loss > data_loss_threshold:
                 cleaned[column] = original
-                log([column], action.action, "rejected", "Conversion would exceed the allowed data-loss threshold; original values were restored.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(loss, 4), confidence=action.confidence)
+                log([column], action.action, "rejected", "Conversion would lose non-null values; original values were restored for review.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), invalid_non_null_count=invalid_non_null_count, confidence=action.confidence)
             else:
                 cleaned[column] = converted
-                log([column], action.action, "executed", "High-confidence conversion applied within the data-loss threshold.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), confidence=action.confidence)
+                log([column], action.action, "executed", "High-confidence lossless conversion applied.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), invalid_non_null_count=0, confidence=action.confidence)
 
     # 8. Normalize case only for confirmed categorical proposals.
     for action in actions:

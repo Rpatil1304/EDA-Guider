@@ -14,7 +14,7 @@ from app.reporting import generate_eda_guide_report
 
 
 # Edit this path. Absolute paths and paths relative to the backend directory work.
-CSV_PATH = Path(r"C:\Users\rohit\OneDrive\Documents\Project\EDA-Guider\03_Calfus_Candidate_Delivery_Data.csv")
+CSV_PATH = Path(r"C:\Users\rohit\OneDrive\Documents\Project\EDA-Guider\europe.csv")
 
 
 def print_section(title: str) -> None:

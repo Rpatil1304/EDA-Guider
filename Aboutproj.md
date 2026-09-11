@@ -1,539 +1,427 @@
 # EDA-Guider Project Guide
 
-## 1. Project Purpose
+## 1. Purpose
 
-EDA-Guider is an exploratory data analysis assistant for CSV and Excel datasets.
+EDA-Guider is a rule-based assistant for the early stages of exploratory data analysis (EDA). It accepts CSV and Excel files, records how they were loaded, profiles the original values, creates an evidence-based preprocessing plan, applies only safe transformations to an internal copy, validates the result, and generates a readable Markdown report.
 
-The project is designed to guide the user through the early EDA workflow:
+The uploaded source file is never overwritten. The processed DataFrame is separate from the original input and can be saved as a new CSV.
 
-1. Load the dataset safely.
-2. Validate its structure.
-3. Understand the raw data.
-4. Identify possible preprocessing actions.
-5. Apply safe actions to an internal copy.
-6. Explain what changed.
-7. Prepare the dataset for future statistics, visualizations, and insights.
+The currently connected pipeline implements ingestion through preprocessing summary. Statistical analysis, visualization selection, insight synthesis, and the complete frontend workflow are separate stages and are not yet fully connected to this pipeline.
 
-The original uploaded file is never modified.
+## 2. Main Pipeline
 
-## 2. Overall Execution Flow
+The active entry point is:
 
 ```text
-Input CSV or Excel file
-        |
-        v
-Part 1: File ingestion
-        |
-        v
-Part 2: Structure validation
-        |
-        v
-Part 3: Raw data profiling
-        |
-        v
-Part 4: Preprocessing plan
-        |
-        v
-Part 5: Internal preprocessing execution
-        |
-        v
-Part 6: Before-and-after summary
-        |
-        v
-Part 7: Future statistical, visualization, and insight analysis
+backend/app/preprocessing/pipeline.py
+run_preprocessing_pipeline(file_path_or_buffer)
 ```
 
-The current implemented pipeline runs through Parts 1 to 6. Part 7 is represented in the report as the next planned stage.
+The execution order is:
 
-## 3. Part 1 - File Ingestion
+```text
+1. Read CSV or Excel input
+2. Detect file metadata
+3. Build the raw DataFrame
+4. Profile the untouched raw values
+5. Validate and normalize structure
+6. Generate a rule-based preprocessing plan
+7. Execute safe plan actions on a deep copy
+8. Check row and column preservation
+9. Profile the cleaned internal copy
+10. Build the before-and-after summary
+11. Save or return the processed data and report
+```
 
-The process begins when the user provides a CSV or Excel file.
+The structured pipeline result contains:
 
-### CSV ingestion
+```text
+status
+ingestion_report
+structural_report
+raw_profile_report
+preprocessing_plan
+execution_log
+preprocessing_summary_report
+cleaned_dataframe
+pipeline_error
+```
 
-For CSV files, the system:
+If a stage fails, the pipeline returns the reports already produced and records the failing stage, exception type, and message in `pipeline_error`.
 
-- Reads the file safely.
-- Detects the file encoding.
-- Detects the delimiter, such as comma, semicolon, tab, or pipe.
-- Detects whether the first row is a header.
-- Loads the data into a Pandas DataFrame.
-- Preserves the original file.
+## 3. Project Modules
 
-### Excel ingestion
+| Responsibility | Main implementation |
+| --- | --- |
+| File loading | `backend/app/ingestion/loader.py` |
+| Structure checks | `backend/app/ingestion/structural.py` |
+| Raw profiling | `backend/app/profiling/raw_profiler.py` |
+| Shared numeric parsing | `backend/app/profiling/parsing.py` |
+| Rule generation | `backend/app/preprocessing/raw_rule_engine.py` |
+| Preprocessing execution | `backend/app/preprocessing/preprocessor.py` |
+| Pipeline orchestration | `backend/app/preprocessing/pipeline.py` |
+| Result validation | `backend/app/execution/validator.py` |
+| Before-and-after summary | `backend/app/preprocessing/summary.py` |
+| Markdown report | `backend/app/reporting/guide.py` |
+| Local runner | `backend/run_sample_pipeline.py` |
+| Tests | `backend/tests/` |
 
-For Excel files, the system:
+The active ingestion path uses `raw_profiler.py` and `raw_rule_engine.py`. The older `dataset_profiler.py`, `column_profiler.py`, and `rule_engine.py` modules contain additional or earlier profiling concepts but are not the source of the Parts 1 to 6 report.
 
-- Reads the workbook.
-- Loads the first worksheet.
-- Records that only the first worksheet was used.
-- Loads the worksheet into a Pandas DataFrame.
+## 4. Part 1 - File Ingestion
 
-### Ingestion result
+### 4.1 Input validation
 
-The ingestion report records information such as:
+The loader accepts a filesystem path or readable file-like object. Supported formats are `.csv`, `.xlsx`, and `.xls`. Unsupported extensions and unreadable inputs produce a structured ingestion error.
 
-- File name
-- File type
-- Encoding
-- Encoding confidence
-- Delimiter
-- Header status
-- Row count
-- Column count
-- Warnings
-- Errors
+### 4.2 CSV ingestion
 
-If the file cannot be loaded, the pipeline stops and returns a structured error instead of crashing.
+For CSV files, the loader:
 
-## 4. Part 2 - Structure Validation
+1. Reads the file bytes once.
+2. Detects a UTF-8 byte-order mark when present.
+3. Attempts encoding detection with `chardet`.
+4. Falls back to `charset-normalizer` when available.
+5. Falls back to UTF-8 if no detector is available.
+6. Detects comma, semicolon, tab, pipe, or colon delimiters.
+7. Chooses the delimiter producing the most consistent row widths.
+8. Respects CSV quoting, including values such as `"1,610"`.
+9. Detects whether the first row is a header.
+10. Loads the data into a Pandas DataFrame.
 
-After loading the file, the dataset structure is checked before detailed analysis begins.
+Encoding, confidence, delimiter, header status, and fallback warnings are recorded.
 
-The system checks:
+### 4.3 Excel ingestion
 
-- Whether the DataFrame is empty.
-- Whether the dataset contains columns.
-- Whether the dataset has a usable structure.
-- Whether duplicate column names exist.
-- Whether structural warnings or errors should be reported.
+For Excel files:
 
-Duplicate column names are preserved in the raw profile but are made unique internally. For example:
+1. The workbook is loaded through Pandas.
+2. The first worksheet is selected.
+3. The report records that only the first worksheet was loaded.
+4. The worksheet becomes the raw DataFrame.
+
+Excel support requires `openpyxl` for `.xlsx` files and `xlrd` for legacy `.xls` files.
+
+### 4.4 Ingestion report
+
+The ingestion report records file name, file type, encoding, encoding confidence, delimiter, header status, row count, column count, warnings, and errors. A failed load stops the pipeline with a structured error rather than an uncontrolled crash.
+
+## 5. Part 2 - Structure Validation
+
+Structure validation runs before the preprocessing plan is generated.
+
+### 5.1 Fatal checks
+
+The dataset cannot continue when the loaded object is not a DataFrame, the DataFrame has zero columns, or the DataFrame has zero rows.
+
+### 5.2 Duplicate columns
+
+Duplicate column names are detected and made unique internally. The original names remain available in the raw profile. For example:
 
 ```text
 value, value, city
 ```
 
-can become:
+becomes:
 
 ```text
 value, value_2, city
 ```
 
-The structural report contains:
+No user data is deleted.
 
-- Validation status
-- Row count
-- Column count
-- Duplicate columns
-- Warnings
-- Errors
-- Fatal status when the dataset cannot continue
+### 5.3 Index-like columns
 
-## 5. Part 3 - Raw Data Profiling
+A likely exported row-index column is detected when its name is blank, `Unnamed: 0`, or `index`, its values are numeric, and its values form a zero-based sequence from `0` to `row_count - 1`.
 
-The raw profile is created before any preprocessing is applied.
+The column is retained, not silently dropped. The rule engine creates `review_index_column` so the user can decide whether it should be removed later.
 
-This is important because it gives the user an honest description of the original dataset.
+### 5.4 Duplicate rows
+
+Duplicate rows are detected during execution and recorded. They are retained by default because automatic deletion could remove legitimate repeated observations.
+
+### 5.5 Structural report
+
+The structural report includes validation status, fatal status, row count, column count, duplicate columns, renamed columns, index-like columns, warnings, and errors.
+
+## 6. Part 3 - Raw Data Profiling
+
+The raw profile is generated from the loaded DataFrame before any cleaning action. Profiling is read-only and does not alter values, dtypes, headers, or row order.
+
+### 6.1 Per-column observations
 
 For every column, the profiler records:
 
-- Column name
-- Original data type
-- Number of unique values
-- Sample values
-- Actual null count
-- Actual null percentage
-- Null-like text count
-- Breakdown of null-like markers
-- Empty-string count
-- Whitespace count
-- Numeric-like percentage
-- Datetime-like percentage
-- Boolean-like percentage
-- Whether the column may be an identifier
-- Whether the column may be categorical
-- Whether the column may contain free text
-- Quality warnings
+- Column name and raw Pandas dtype.
+- Sample values and unique-value count.
+- Actual null count and percentage.
+- Null-like count and marker breakdown.
+- Whitespace count and empty-string count.
+- Mixed Python type count and mixed-type status.
+- Case-variation status.
+- Numeric-like, datetime-like, and Boolean-like percentages.
+- Identifier, index-like, categorical, and free-text signals.
+- Column warnings.
 
-The raw profile does not modify the DataFrame.
+### 6.2 Dataset-level observations
 
-### Raw data warnings
+The profile also records total cells, actual nulls, null-like values, total missing values, missing percentages, columns containing missing values, and high-correlation warnings for numeric columns.
 
-The profiler can identify warnings such as:
+### 6.3 Warning types
 
-- High missingness
-- High cardinality
-- Constant or entirely null columns
-- Strong correlation between numeric columns
+The active profiler can report high missingness at 50 percent or more, high cardinality at 90 percent or more unique values, constant or entirely null columns, and high absolute Pearson correlation of at least `0.95`.
 
-## 6. Null and Missing-Value Policy
+These are observations, not automatic deletion instructions.
 
-A major project decision was made for null values:
+## 7. Missing-Value and Text Quality Rules
 
-> Null values should be explained to the user instead of automatically being solved.
+### 7.1 Actual missing values
 
-Nulls do not automatically block visualization or insight generation.
+Actual missing values include `None`, `NaN`, and other values recognized by Pandas as missing.
 
-The system separates missing values into different categories:
+### 7.2 Null-like text
 
-### Actual null values
-
-These are values recognized by Pandas as missing, such as `None` or `NaN`.
-
-### Null-like text values
-
-These are text values that commonly represent missing data, such as:
-
-- Empty strings
-- `NA`
-- `N/A`
-- `nan`
-- `null`
-- `none`
-- `missing`
-
-### Null report
-
-The dataset-level null summary contains:
-
-- Total number of cells
-- Actual null count
-- Actual null percentage
-- Null-like value count
-- Null-like percentage
-- Total missing count
-- Total missing percentage
-- Columns containing actual nulls
-- Columns containing null-like values
-
-Each column also contains its own null count, percentage, and null-like breakdown.
-
-Null and null-like values are reported but are not automatically filled, removed, or replaced.
-
-## 7. Part 4 - Preprocessing Plan
-
-The rule engine uses the raw profile to create a preprocessing plan.
-
-The plan does not immediately change the dataset. It describes possible actions based on evidence found during profiling.
-
-Possible plan actions include:
-
-- Strip leading and trailing whitespace.
-- Convert numeric-looking strings to numeric values.
-- Convert datetime-looking strings to datetime values.
-- Convert boolean-like values to Boolean values.
-- Classify low-cardinality columns as categorical.
-- Preserve likely identifier columns.
-- Preserve likely free-text columns.
-- Record duplicate rows and duplicate columns for review.
-
-Each plan action contains:
-
-- Target column or columns
-- Action name
-- Confidence score
-- Reason for the action
-- Optional parameters
-
-### Null-related change
-
-The preprocessing plan no longer creates actions such as:
+The following markers are recognized case-insensitively after trimming:
 
 ```text
-replace_null_like
-replace_empty_strings
+""
+"na"
+"n/a"
+"nan"
+"null"
+"none"
+"missing"
 ```
 
-Null and null-like values remain available for reporting and later analysis decisions.
+### 7.3 Planned missing-value actions
 
-## 8. Part 5 - Internal Preprocessing Execution
+When evidence is present, the rule engine creates `replace_null_like` and `replace_empty_strings`. These actions convert matching text in the internal copy to Pandas missing values. They do not modify the uploaded source file. Actual missing values are not filled or imputed automatically.
 
-The system creates a deep copy of the input DataFrame before applying safe preprocessing actions.
+### 7.4 Whitespace
 
-The original DataFrame and original uploaded file remain unchanged.
+Leading and trailing whitespace is measured for string values. Execution strips it from string/object columns. Non-string values are preserved.
 
-The executor can apply high-confidence transformations such as:
+## 8. Numeric, Datetime, and Boolean Profiling
 
-- Whitespace cleanup
-- Numeric conversion
-- Datetime conversion
-- Boolean conversion
-- Case normalization for confirmed categorical columns
+### 8.1 Safe numeric parser
 
-Conversions are protected by a data-loss threshold. If a conversion would create too many missing values, it is rejected and the original values are restored.
+`backend/app/profiling/parsing.py` accepts plain integers, decimals, negative values, Western grouped values such as `1,610` and `12,345.67`, and Indian grouped values such as `89,17,000` and `1,15,44,000`.
 
-The executor also reports duplicate rows and duplicate columns without removing them automatically.
+It rejects inconsistent values such as `1,2,3` instead of guessing their meaning. Currency symbols, units, and percentage symbols are not removed by this parser because those require separate semantic rules.
 
-Every action is recorded in an execution log with:
+### 8.2 Numeric profiling
 
-- Columns affected
-- Action name
-- Status
-- Reason
-- Confidence when applicable
-- Values changed when applicable
-- Null percentage before and after conversions
-- Data-loss information when applicable
+The profiler calculates the percentage of semantic non-null values that can be parsed safely. A high percentage in a string-like column can produce `convert_to_numeric`.
 
-Possible statuses include:
+### 8.3 Datetime profiling
 
-- `executed`
-- `skipped`
-- `rejected`
+String-like values are checked with mixed-format datetime parsing. Numeric and Boolean columns are excluded so ordinary numbers are not misinterpreted as timestamps.
 
-Null-like text values such as `NA` and empty strings are preserved.
+### 8.4 Boolean profiling
 
-## 9. Part 6 - Before-and-After Summary
+Boolean-like values include `true`, `false`, `yes`, `no`, `y`, `n`, `1`, and `0`, checked case-insensitively after trimming.
 
-After internal preprocessing, the cleaned DataFrame is profiled again.
+## 9. Part 4 - Rule-Based Preprocessing Plan
 
-The summary compares:
+The rule engine receives the raw DataFrame and raw profile. It produces a `PreprocessingPlan` without modifying data.
 
-```text
-Raw profile
-versus
-Cleaned profile
-```
+Each action contains target columns, an action name, confidence from `0.0` to `1.0`, a reason, and optional parameters.
 
-The summary reports:
+### 9.1 Active actions
 
-- Raw row count
-- Cleaned row count
-- Raw column count
-- Cleaned column count
-- Changed column count
-- Execution log count
-- Column-level changes
-- Actions related to each column
-- Before-and-after data types
-- Before-and-after null percentages
-- Before-and-after unique counts
-- Original null summary
+| Action | Purpose | Default behavior |
+| --- | --- | --- |
+| `strip_whitespace` | Remove outer whitespace | Execute internally |
+| `replace_null_like` | Convert known missing markers | Execute internally |
+| `replace_empty_strings` | Convert empty strings | Execute internally |
+| `convert_to_numeric` | Convert high-confidence numeric strings | Execute only when safe |
+| `convert_to_datetime` | Convert high-confidence datetime strings | Execute only when safe |
+| `convert_to_boolean` | Convert high-confidence Boolean strings | Execute only when safe |
+| `classify_as_categorical` | Identify low-cardinality data | May trigger case normalization |
+| `normalize_case` | Normalize confirmed categorical text | Execute for confirmed categorical data |
+| `preserve_identifier` | Protect likely IDs | Skip transformation |
+| `preserve_free_text` | Protect high-cardinality text | Skip transformation |
+| `review_index_column` | Flag exported index columns | Skip; manual review required |
 
-This gives the user a clear explanation of what the system did internally.
+### 9.2 Confidence policy
 
-The cleaned DataFrame is used internally and can also be saved as a processed CSV by the sample runner.
+Conversion confidence must be at least `0.80`. Lower-confidence conversions are skipped and logged for review. Categorical normalization also requires confidence of at least `0.80`.
 
-## 10. Part 7 - Planned Future EDA Analysis
+### 9.3 Identifier and free-text protection
 
-Part 7 is the next major stage of the project.
+High-cardinality columns with names containing signals such as `id`, `uuid`, `identifier`, or `code` can be preserved as identifiers. High-cardinality variable-length strings can be preserved as free text because automatic conversion or normalization could destroy meaning.
 
-The current report documents Part 7 as planned work. It will later use the prepared internal data and evidence collected in Parts 1 to 6.
+## 10. Part 5 - Safe Internal Preprocessing
 
-Planned Part 7 capabilities are:
+The executor creates `df.copy(deep=True)` before applying any transformation. The source DataFrame and uploaded file remain unchanged.
 
-1. Statistical profiling.
-2. Descriptive statistics.
-3. Distribution analysis.
-4. Outlier analysis.
-5. Correlation analysis.
-6. Rule-based visualization recommendations.
-7. Evidence-based insight generation.
-8. A final report combining statistics, charts, and insights.
+### 10.1 Fixed execution order
 
-The project already contains early modules and schemas for visualization and insight handling, but these stages are not yet fully connected to the main preprocessing pipeline.
+1. Apply planned null-like replacement.
+2. Apply planned empty-string replacement.
+3. Strip leading and trailing whitespace from all string/object columns.
+4. Detect duplicate columns and retain them for review.
+5. Detect duplicate rows and retain them for review.
+6. Apply high-confidence numeric, datetime, and Boolean conversions.
+7. Apply case normalization for confirmed categorical columns.
+8. Record preservation and review-only actions as skipped.
+9. Return the cleaned internal DataFrame and execution log.
 
-## 11. Standalone User Report
+### 10.2 Conversion protection
 
-The pipeline now generates a separate Markdown report for the user.
+Before accepting a numeric, datetime, or Boolean conversion, the executor compares null percentage before and after, counts non-null values that became missing, and checks the configured data-loss threshold.
 
-When the sample runner is executed:
+If any non-null value becomes missing, or loss exceeds the threshold, the original column is restored and the action receives status `rejected`. This prevents invalid values such as `bad` from silently becoming `NaN`.
+
+Grouped numeric values such as `"1,610"` are parsed through the shared parser and become `1610`, not missing.
+
+### 10.3 Review-only actions
+
+`review_index_column`, `preserve_identifier`, `preserve_free_text`, and actions beginning with `review_` are recorded but not automatically applied.
+
+### 10.4 Execution log
+
+Each entry records columns, action, status, reason, confidence when relevant, values changed when relevant, duplicate counts when relevant, null percentages before and after conversion, data-loss percentage, and invalid non-null count.
+
+Possible statuses are `executed`, `skipped`, and `rejected`.
+
+## 11. Part 6 - Post-Processing Validation
+
+After execution, `Validator.compare` checks the raw and cleaned DataFrames.
+
+The validation requires the same row count, the same column names and order, and a non-empty cleaned DataFrame. Values and dtypes may change, but preprocessing cannot silently add or remove rows or columns. A failure is returned as a structured `preprocessing_validation` error.
+
+## 12. Part 7 - Before-and-After Summary
+
+The cleaned internal copy is profiled again. The summary compares raw and cleaned profiles positionally and reports raw and cleaned row counts, column counts, changed-column count, execution-log count, column-level actions, before-and-after dtypes, null percentages, unique counts, and null summaries.
+
+The changed-column count includes columns with a profile difference or a related execution action. It is not limited to columns whose displayed values visibly changed.
+
+## 13. Generated Markdown Report
+
+`backend/app/reporting/guide.py` converts the structured result into Markdown without rerunning the pipeline or modifying data.
+
+The report contains:
+
+1. File ingestion metadata.
+2. Structure validation results.
+3. Index-like column warnings.
+4. Raw profile metrics.
+5. Missing-value and null-like summaries.
+6. Per-column profile table.
+7. Rule-based preprocessing plan.
+8. Internal execution log.
+9. Raw-versus-cleaned summary.
+10. Planned future EDA steps.
+
+## 14. Running a New Dataset
+
+Edit `CSV_PATH` in `backend/run_sample_pipeline.py`, then run:
 
 ```powershell
 cd backend
 python run_sample_pipeline.py
 ```
 
-it creates a report beside the input dataset:
+The runner checks the path, calls the pipeline, prints stage output, saves `<input-name>_processed.csv`, saves `<input-name>_eda_report.md`, and prints a cleaned-data preview. The original file is not overwritten.
+
+## 15. Europe Dataset Example
+
+For `europe.csv`, the pipeline identifies the blank-header first column as an exported index and creates a review action. It recognizes grouped numeric values in the source data.
+
+The value:
 
 ```text
-03_Calfus_Candidate_Delivery_Data_eda_report.md
+population_per_sq_km = "1,610"
 ```
 
-The report contains:
-
-- Dataset name and pipeline status
-- Part 1 ingestion details
-- Part 2 structure validation details
-- Part 3 raw profile details
-- Detailed null and null-like value information
-- Per-column profile table
-- Part 4 preprocessing plan
-- Part 5 execution log
-- Part 6 before-and-after summary
-- Part 7 future EDA steps
-
-The report is intended to be read from top to bottom as a user guide for the EDA process.
-
-## 12. Report Generation Design
-
-The report is generated from the structured result returned by the preprocessing pipeline.
-
-The report generator:
-
-- Reads the pipeline result.
-- Does not run the pipeline again.
-- Does not modify the dataset.
-- Converts technical pipeline data into readable Markdown.
-- Can return the report as a string.
-- Can save the report to a chosen output path.
-
-The report generator is located at:
+is safely converted to:
 
 ```text
-backend/app/reporting/guide.py
+population_per_sq_km = 1610.0
 ```
 
-Its public function is:
+No conversion-created null is introduced. The index-like column is retained because dropping it automatically could be destructive; the report tells the user to review it.
 
-```python
-generate_eda_guide_report(result, output_path)
-```
+## 16. Testing
 
-## 13. Sample Pipeline
-
-The sample runner is located at:
-
-```text
-backend/run_sample_pipeline.py
-```
-
-It currently:
-
-1. Reads the configured CSV path.
-2. Runs the preprocessing pipeline.
-3. Prints pipeline status.
-4. Prints ingestion and structure details.
-5. Prints the raw profile.
-6. Prints the null summary.
-7. Prints the preprocessing plan.
-8. Prints the execution log.
-9. Prints the preprocessing summary.
-10. Saves the processed CSV.
-11. Saves the standalone Markdown EDA report.
-12. Prints a cleaned-data preview.
-
-The original CSV is not overwritten.
-
-## 14. Testing and Fixes
-
-The project has a backend test suite covering:
-
-- Agent behavior
-- Execution behavior
-- File ingestion
-- Raw profiling
-- Pipeline behavior
-- Preprocessing rules
-- Summary generation
-- Visualization module behavior
-
-A pytest collection error was found in `tests/test_profiling.py`.
-
-The problem was that a demonstration output block was placed outside the following guard:
-
-```python
-if __name__ == "__main__":
-```
-
-As a result, pytest executed the block while importing the test module. The variable `result` did not exist at import time, causing:
-
-```text
-NameError: name 'result' is not defined
-```
-
-The output block was moved inside the main guard so the file can be imported safely by pytest.
-
-An existing execution test also expected the old behavior where `NA` was converted to a null value. Since the new policy preserves null-like values, the test was updated to expect `NA` to remain unchanged.
-
-The Excel test required the `openpyxl` package. The dependency was installed in the project virtual environment.
-
-The final test result was:
-
-```text
-22 passed
-```
-
-## 15. Dependencies and Environment
-
-The backend dependencies are listed in:
-
-```text
-backend/requirements.txt
-```
-
-Important packages include:
-
-- Pandas for data handling
-- FastAPI for the future API layer
-- Pydantic for structured schemas
-- OpenPyXL for Excel files
-- Pytest for testing
-- NumPy and scikit-learn for future analysis support
-
-The project is tested with Python 3.12 and a virtual environment.
-
-Recommended test command:
+Run the backend tests from the backend directory:
 
 ```powershell
 cd backend
-..\venv\Scripts\python.exe -m pytest
+python -m pytest -q
 ```
 
-## 16. Current Project Status
+The tests cover CSV and Excel loading, delimiter behavior, duplicate columns, invalid structures, raw profiling, null-like and empty-string rules, grouped numeric parsing, malformed numeric values, exported index detection, whitespace cleanup, Boolean and categorical handling, duplicate-row reporting, lossy conversion rejection, row and column preservation, pipeline result structure, and Markdown report generation.
 
-### Completed
+The Excel test requires the dependencies in `backend/requirements.txt`. If `openpyxl` is unavailable, CSV and preprocessing tests can still run, but Excel test setup will fail.
 
-- CSV ingestion
-- Excel ingestion
-- Encoding detection
-- Delimiter detection
-- Header detection
-- Structure validation
-- Duplicate column handling
-- Raw profiling
-- Null and null-like reporting
-- Rule-based preprocessing planning
-- Safe internal preprocessing
-- Data-loss protection for conversions
-- Before-and-after preprocessing summary
-- Standalone Markdown report generation
-- Sample pipeline output
-- Automated tests
+## 17. Dependencies
 
-### Not yet fully connected
+Dependencies are listed in `backend/requirements.txt`.
 
-- End-to-end statistical analysis in the main pipeline
-- End-to-end visualization recommendation flow
-- End-to-end insight generation flow
-- Complete FastAPI upload and analysis workflow
-- Complete frontend dashboard integration
-- Final combined report containing charts and insights
+Important packages include Pandas, `chardet`, `charset-normalizer`, `openpyxl`, `xlrd`, Pydantic, Pytest, NumPy, scikit-learn, and Plotly.
 
-## 17. Future End-to-End Flow
+## 18. Current Status and Boundaries
 
-The planned final flow is:
+### Implemented and connected
+
+- CSV and Excel ingestion.
+- Encoding, delimiter, and header detection.
+- Empty-data validation.
+- Duplicate-column detection and internal renaming.
+- Exported-index detection.
+- Duplicate-row detection.
+- Raw null, null-like, whitespace, empty-string, mixed-type, case, numeric, datetime, and Boolean profiling.
+- Grouped-number parsing.
+- Rule-based preprocessing planning.
+- Safe internal transformations.
+- Lossless conversion protection.
+- Post-processing structural validation.
+- Before-and-after summary.
+- Markdown report generation.
+- Processed CSV output.
+
+### Not yet fully connected to the main pipeline
+
+- Full descriptive-statistics report.
+- Automatic visualization recommendations.
+- Evidence-based insight synthesis.
+- Complete API upload-to-report workflow.
+- Complete frontend dashboard workflow.
+- Final combined report with charts and insights.
+
+Review-only behavior is intentional. Index removal, duplicate-row removal, outlier removal, imputation, currency conversion, percentage conversion, and free-text transformations should become explicit evidence-backed actions before being made automatic.
+
+## 19. Future End-to-End Flow
 
 ```text
-User uploads dataset
-        |
-        v
-Ingestion and validation
-        |
-        v
-Raw data profile
-        |
-        v
-Preprocessing plan
-        |
-        v
-Safe internal preprocessing
-        |
-        v
-Preprocessing summary
-        |
-        v
-Statistical profiling
-        |
-        v
-Visualization recommendations
-        |
-        v
-Evidence-based insights
-        |
-        v
-Final EDA report and dashboard
+Upload dataset
+    |
+    v
+Ingest and validate
+    |
+    v
+Profile raw data
+    |
+    v
+Generate preprocessing plan
+    |
+    v
+Execute safe internal actions
+    |
+    v
+Validate and summarize changes
+    |
+    v
+Generate descriptive statistics
+    |
+    v
+Recommend visualizations
+    |
+    v
+Generate evidence-based insights
+    |
+    v
+Present final report and dashboard
 ```
-
-The current standalone report completes the first part of this journey and provides a clear foundation for the future visualization and insight stages.

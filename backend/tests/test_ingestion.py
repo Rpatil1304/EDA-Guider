@@ -105,7 +105,26 @@ def test_preprocessing_plan_uses_raw_profile_evidence():
     actions = {(action.action, action.columns[0]) for action in plan.actions}
     assert ("preserve_identifier", "customer_id") in actions
     assert ("strip_whitespace", "notes") in actions
-    assert ("replace_null_like", "notes") not in actions
-    assert ("replace_empty_strings", "notes") not in actions
+    assert ("replace_null_like", "notes") in actions
+    assert ("replace_empty_strings", "notes") in actions
     assert ("convert_to_boolean", "active") in actions
     assert all(0 <= action.confidence <= 1 for action in plan.actions)
+
+
+def test_grouped_numeric_values_are_profiled_as_numeric():
+    from app.profiling.parsing import parse_numeric_value
+
+    assert parse_numeric_value("1,610") == 1610
+    assert parse_numeric_value("89,17,000") == 8917000
+    assert parse_numeric_value("1,2,3") is None
+
+
+def test_exported_index_column_is_reported_for_review():
+    file_input = BytesIO(b",name\n0,A\n1,B\n")
+    file_input.name = "indexed.csv"
+
+    df, report = load_file(file_input)
+
+    assert df is not None
+    assert report["structural"]["index_like_columns"] == [""]
+    assert any("Index-like columns" in warning for warning in report["structural"]["warnings"])

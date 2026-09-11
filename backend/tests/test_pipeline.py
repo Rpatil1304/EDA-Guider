@@ -30,7 +30,7 @@ def test_run_preprocessing_pipeline_returns_all_stage_outputs():
     result = run_preprocessing_pipeline(uploaded)
 
     assert set(result) == _REQUIRED_KEYS
-    assert result["status"] == "success"
+    assert result["status"] == "success", result["pipeline_error"]
     assert result["pipeline_error"] is None
     assert result["ingestion_report"]["status"] == "success"
     assert result["structural_report"]["status"] == "success"
@@ -42,7 +42,7 @@ def test_run_preprocessing_pipeline_returns_all_stage_outputs():
     assert result["cleaned_dataframe"]["active"].tolist() == [True, False]
 
 
-def test_pipeline_reports_null_like_values_without_replacing_them():
+def test_pipeline_reports_and_replaces_null_like_values():
     uploaded = BytesIO(
         b"name,notes\n"
         b"A,NA\n"
@@ -59,7 +59,20 @@ def test_pipeline_reports_null_like_values_without_replacing_them():
     assert null_summary["null_like_count"] == 2
     assert notes_profile["null_like_breakdown"]["na"] == 1
     assert notes_profile["null_like_breakdown"][""] == 1
-    assert result["cleaned_dataframe"]["notes"].tolist() == ["NA", "", "ok"]
+    assert result["cleaned_dataframe"]["notes"].isna().tolist() == [True, True, False]
+
+
+def test_pipeline_converts_grouped_numeric_values_without_data_loss():
+    uploaded = BytesIO(
+        b"country,population_per_sq_km\nAustria,106.3\nMalta,1610\n"
+    )
+    uploaded.name = "grouped.csv"
+
+    result = run_preprocessing_pipeline(uploaded)
+
+    assert result["status"] == "success"
+    assert result["cleaned_dataframe"]["population_per_sq_km"].tolist() == [106.3, 1610.0], result
+    assert result["cleaned_dataframe"]["population_per_sq_km"].notna().all()
 
 
 def test_run_preprocessing_pipeline_stops_with_structured_ingestion_error():
