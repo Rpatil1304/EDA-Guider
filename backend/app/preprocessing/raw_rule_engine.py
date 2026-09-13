@@ -60,6 +60,7 @@ def generate_preprocessing_plan_from_raw_profile(
         numeric_score = float(profile.get("numeric_like_percentage", 0.0))
         datetime_score = float(profile.get("datetime_like_percentage", 0.0))
         boolean_score = float(profile.get("boolean_like_percentage", 0.0))
+        semantic_type = profile.get("semantic_type", "unresolved")
         is_string_like = (
             pd.api.types.is_object_dtype(df.dtypes.iloc[index])
             or pd.api.types.is_string_dtype(df.dtypes.iloc[index])
@@ -76,39 +77,34 @@ def generate_preprocessing_plan_from_raw_profile(
                 actions, column, "strip_whitespace", confidence,
                 f"Detected leading or trailing whitespace in {whitespace_count} value(s).",
             )
-        if profile.get("null_like_count", 0):
-            _add_action(
-                actions, column, "replace_null_like", 100.0,
-                f"Detected {profile['null_like_count']} null-like value(s).",
-            )
-        if profile.get("empty_string_count", 0):
-            _add_action(
-                actions, column, "replace_empty_strings", 100.0,
-                f"Detected {profile['empty_string_count']} empty or whitespace-only value(s).",
-            )
         if profile.get("is_index_like"):
             _add_action(
                 actions, column, "review_index_column", 100.0,
                 "The column looks like an exported row index; review whether it should be removed.",
+            )
+        if profile.get("duplicate_value_column"):
+            _add_action(
+                actions, column, "review_duplicate_column", 100.0,
+                "The column has identical values to another column; review before removing either column.",
             )
         if profile.get("is_likely_id"):
             _add_action(
                 actions, column, "preserve_identifier", unique_ratio * 100,
                 f"The column has {profile.get('unique_count', 0)} unique values across {raw_profile['row_count']} rows and is likely an identifier; preserve it as an identifier.",
             )
-        elif numeric_score >= 80 and is_string_like:
+        elif numeric_score >= 80 and is_string_like and semantic_type == "numeric":
             _add_action(
                 actions, column, "convert_to_numeric", numeric_score,
                 f"{numeric_score:.1f}% of non-null values match a numeric pattern while the raw dtype is string-like.",
                 {"numeric_like_percentage": numeric_score},
             )
-        if datetime_score >= 80 and is_string_like:
+        if datetime_score >= 80 and is_string_like and semantic_type == "datetime":
             _add_action(
                 actions, column, "convert_to_datetime", datetime_score,
                 f"{datetime_score:.1f}% of non-null values parse as datetimes while the raw dtype is string-like.",
                 {"datetime_like_percentage": datetime_score},
             )
-        if boolean_score >= 80 and is_string_like:
+        if boolean_score >= 80 and is_string_like and semantic_type == "boolean":
             _add_action(
                 actions, column, "convert_to_boolean", boolean_score,
                 f"{boolean_score:.1f}% of non-null values match boolean representations such as yes/no or true/false.",
@@ -129,6 +125,28 @@ def generate_preprocessing_plan_from_raw_profile(
                 actions, column, "normalize_case", 100.0,
                 "Categorical values contain inconsistent capitalization.",
                 {"strategy": "lower"},
+            )
+        if profile.get("outlier_count", 0):
+            _add_action(
+                actions, column, "review_outliers", 100.0,
+                f"Detected {profile['outlier_count']} statistical outlier(s); values were retained.",
+                {"outlier_values": profile.get("outlier_values", [])},
+            )
+        if profile.get("skewness") is not None and abs(profile["skewness"]) >= 1:
+            _add_action(
+                actions, column, "review_skewness", 100.0,
+                f"Numeric skewness is {profile['skewness']:.3f}; review downstream summaries and charts.",
+                {"skewness": profile["skewness"]},
+            )
+        if profile.get("mixed_format_warning"):
+            _add_action(
+                actions, column, "review_mixed_format", 100.0,
+                "Inconsistent formatting signals were detected; automatic conversion was not assumed.",
+            )
+        if profile.get("semantic_type") == "unresolved":
+            _add_action(
+                actions, column, "review_semantic_type", 0.0,
+                "The column could not be classified with sufficient confidence; it was left untouched.",
             )
 
     return PreprocessingPlan(

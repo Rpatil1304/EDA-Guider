@@ -633,15 +633,36 @@ def execute_preprocessing_plan(
                 cleaned[column] = converted
                 log([column], action.action, "executed", "High-confidence lossless conversion applied.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), invalid_non_null_count=0, confidence=action.confidence)
 
-    # 8. Normalize case only for confirmed categorical proposals.
+    # 8. Record classification and normalize case only when explicitly planned.
     for action in actions:
-        if action.action not in {"classify_as_categorical", "normalize_case"}:
+        if action.action == "classify_as_categorical":
+            columns = safe_columns(action.columns)
+            if action.confidence < 0.80:
+                for column in action.columns:
+                    log(
+                        [column],
+                        action.action,
+                        "needs_review",
+                        "Categorical confidence is below 0.80; manual review is required.",
+                        confidence=action.confidence,
+                    )
+            else:
+                for column in columns:
+                    if cleaned[column].isna().all():
+                        log([column], action.action, "skipped", "Column is entirely null.")
+                    else:
+                        log(
+                            [column],
+                            action.action,
+                            "executed",
+                            "Column classified as categorical; no values were changed.",
+                            values_changed=0,
+                            confidence=action.confidence,
+                        )
+            continue
+        if action.action != "normalize_case":
             continue
         columns = safe_columns(action.columns)
-        if action.action == "classify_as_categorical" and action.confidence < 0.80:
-            for column in action.columns:
-                log([column], action.action, "skipped", "Categorical confidence is below 0.80; manual review is required.", confidence=action.confidence)
-            continue
         for column in columns:
             if cleaned[column].isna().all():
                 log([column], "normalize_case", "skipped", "Column is entirely null.")
@@ -669,8 +690,8 @@ def execute_preprocessing_plan(
             if action.action in {"preserve_identifier", "preserve_free_text"}:
                 log([column], action.action, "skipped", "Preservation decision recorded; no transformation was required.", confidence=action.confidence)
             elif action.action.startswith("review_"):
-                log([column], action.action, "skipped", "Action requires manual review and was not applied.", confidence=action.confidence)
+                log([column], action.action, "needs_review", "Action requires manual review and was not applied.", confidence=action.confidence)
             elif (action.action, column) not in executed_actions:
-                log([column], action.action, "skipped", "Action was not applicable to the fixed execution steps.", confidence=action.confidence)
+                log([column], action.action, "unsupported", "Unknown preprocessing action; no executor is registered for it.", confidence=action.confidence)
 
     return cleaned, execution_log

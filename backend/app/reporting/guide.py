@@ -95,22 +95,29 @@ def generate_eda_guide_report(
         f"({_format_value(null_summary.get('total_missing_percentage'))}%)",
         f"- Columns with actual nulls: {_format_value(null_summary.get('columns_with_nulls'))}",
         f"- Columns with null-like values: {_format_value(null_summary.get('columns_with_null_like_values'))}",
+        f"- Empty strings: {_format_value(null_summary.get('empty_string_count'))} ({_format_value(null_summary.get('empty_string_percentage'))}%)",
+        f"- Whitespace-only strings: {_format_value(null_summary.get('whitespace_only_count'))} ({_format_value(null_summary.get('whitespace_only_percentage'))}%)",
+        f"- Null-like marker breakdown: {_format_value(null_summary.get('null_like_breakdown'))}",
+        f"- Columns with empty strings: {_format_value(null_summary.get('columns_with_empty_strings'))}",
+        f"- Columns with whitespace-only strings: {_format_value(null_summary.get('columns_with_whitespace_only_values'))}",
         "",
-        "Raw null and null-like values are reported first. Where the rule engine "
-        "detects them, the internal copy may replace them while preserving the "
-        "uploaded source file.",
+        "Raw null and null-like values are reported and preserved. They are not "
+        "automatically filled, deleted, or replaced.",
         "",
         "### Column profile",
         "",
-        "| Column | Type | Nulls | Null-like values | Unique values |",
-        "| --- | --- | ---: | ---: | ---: |",
+        "| Column | Type | Semantic type | Confidence | Nulls | Unique | Numeric % | Datetime % | Boolean % | Outliers | Skewness |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for column in raw_profile.get("columns", []):
         lines.append(
-            f"| {column.get('name')} | {column.get('dtype')} | "
+            f"| {column.get('name')} | {column.get('dtype')} | {column.get('semantic_type')} | "
+            f"{column.get('classification_confidence', 0)} | "
             f"{column.get('null_count', 0)} ({column.get('null_percentage', 0)}%) | "
-            f"{column.get('null_like_count', 0)} | {column.get('unique_count', 0)} |"
+            f"{column.get('unique_count', 0)} | {column.get('numeric_like_percentage', 0)} | "
+            f"{column.get('datetime_like_percentage', 0)} | {column.get('boolean_like_percentage', 0)} | "
+            f"{column.get('outlier_count', 0)} | {column.get('skewness')} |"
         )
 
     lines.extend([
@@ -142,6 +149,7 @@ def generate_eda_guide_report(
         "uploaded source file was not modified.",
         "",
         f"- Execution log entries: {len(execution_log)}",
+        f"- Action status counts: {_format_value(summary.get('action_status_counts'))}",
         "",
         "| Columns | Action | Status | Reason |",
         "| --- | --- | --- | --- |",
@@ -164,6 +172,19 @@ def generate_eda_guide_report(
         f"{_format_value(summary.get('cleaned_column_count'))} columns",
         f"- Changed columns: {_format_value(summary.get('changed_column_count'))}",
         f"- Cleaned missing values: {_format_value((summary_report.get('cleaned_profile') or {}).get('null_summary', {}).get('total_missing_count'))}",
+        f"- Excluded columns: {_format_value(summary.get('excluded_column_count'))}",
+        f"- Unresolved columns: {_format_value(summary_report.get('unresolved_columns'))}",
+        f"- Needs-review columns: {_format_value(summary_report.get('needs_review_columns'))}",
+        f"- Raw snapshot unchanged: {_format_value(summary_report.get('raw_snapshot_unchanged'))}",
+        "- Exclusion reasons: " + _format_value([
+            f"{item.get('column')}: {'; '.join(item.get('reasons', []))}"
+            for item in summary_report.get('excluded_columns', [])
+        ]),
+        "",
+        "### Downstream handoff",
+        "",
+        f"- Eligible analysis columns: {_format_value((summary_report.get('downstream_handoff') or {}).get('eligible_columns'))}",
+        f"- Sampling metadata: {_format_value((summary_report.get('downstream_handoff') or {}).get('sampling'))}",
         "",
         "## Part 7 - Next EDA steps",
         "",

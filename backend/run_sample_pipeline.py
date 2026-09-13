@@ -36,6 +36,12 @@ def main() -> None:
         print_section("PIPELINE ERROR")
         print(result["pipeline_error"])
 
+    print_section("RAW YDATA PROFILING REPORT")
+    print(result.get("raw_ydata_profile_report"))
+
+    print_section("CLEANED YDATA PROFILING REPORT")
+    print(result.get("cleaned_ydata_profile_report"))
+
     ingestion = result["ingestion_report"]
     if ingestion:
         print_section("PARTS 1-2: INGESTION AND STRUCTURE")

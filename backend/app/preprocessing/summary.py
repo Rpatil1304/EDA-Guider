@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from collections import Counter
 from typing import Any
 
 import pandas as pd
@@ -11,6 +12,7 @@ from app.profiling.raw_profiler import profile_raw_dataframe
 
 
 _COMPARE_FIELDS = ("dtype", "null_percentage", "unique_count")
+_ANALYSIS_SAMPLE_LIMIT = 100_000
 
 
 def _column_key(name: Any) -> str:
@@ -21,6 +23,36 @@ def _profile_with_kind(df: pd.DataFrame, kind: str) -> dict:
     profile = profile_raw_dataframe(df)
     profile["profile_type"] = kind
     return profile
+
+
+def _build_downstream_handoff(
+    cleaned_dataframe: pd.DataFrame,
+    cleaned_profile: dict,
+    column_summaries: list[dict],
+    excluded_columns: list[dict],
+) -> dict:
+    """Prepare analysis metadata without exposing or mutating cleaned data."""
+
+    excluded_names = {
+        item["column"] for item in excluded_columns if item.get("column")
+    }
+    eligible_columns = [
+        column["name"]
+        for column in cleaned_profile.get("columns", [])
+        if column["name"] not in excluded_names
+    ]
+    analysis_rows = min(len(cleaned_dataframe), _ANALYSIS_SAMPLE_LIMIT)
+    return {
+        "eligible_columns": eligible_columns,
+        "excluded_columns": deepcopy(excluded_columns),
+        "sampling": {
+            "applied": len(cleaned_dataframe) > _ANALYSIS_SAMPLE_LIMIT,
+            "original_row_count": len(cleaned_dataframe),
+            "analysis_row_count": analysis_rows,
+            "max_rows": _ANALYSIS_SAMPLE_LIMIT,
+            "cleaned_dataset_changed": False,
+        },
+    }
 
 
 def build_preprocessing_summary_report(
@@ -87,6 +119,53 @@ def build_preprocessing_summary_report(
         if any(change["changed"] for change in summary["changes"].values())
         or summary["actions"]
     ]
+    excluded_columns = []
+    for summary in column_summaries:
+        actions = summary["actions"]
+        after_profile = summary.get("after") or {}
+        reasons = []
+        if after_profile.get("semantic_type") in {
+            "identifier", "free_text", "unresolved"
+        }:
+            reasons.append(
+                f"semantic type is {after_profile['semantic_type']}"
+            )
+        reasons.extend(
+            entry["reason"]
+            for entry in actions
+            if entry.get("status") in {"needs_review", "unsupported"}
+            or (
+                entry.get("action") in {"preserve_identifier", "preserve_free_text"}
+                and after_profile.get("semantic_type")
+                in {"identifier", "free_text", "unresolved"}
+            )
+        )
+        if reasons:
+            excluded_columns.append({
+                "column": summary["column_after"] or summary["column_before"],
+                "reasons": list(dict.fromkeys(reasons)),
+            })
+    action_status_counts = dict(
+        Counter(entry.get("status", "unknown") for entry in execution_log)
+    )
+    unresolved_columns = [
+        column.get("name")
+        for column in cleaned_profile.get("columns", [])
+        if column.get("semantic_type") == "unresolved"
+    ]
+    needs_review_columns = sorted({
+        column
+        for entry in execution_log
+        if entry.get("status") == "needs_review"
+        for column in entry.get("columns", [])
+        if column
+    })
+    downstream_handoff = _build_downstream_handoff(
+        cleaned_dataframe,
+        cleaned_profile,
+        column_summaries,
+        excluded_columns,
+    )
 
     return {
         "report_type": "preprocessing_summary",
@@ -102,7 +181,15 @@ def build_preprocessing_summary_report(
             "cleaned_column_count": cleaned_profile.get("column_count", 0),
             "changed_column_count": len(set(changed_columns)),
             "execution_log_count": len(execution_log),
+            "excluded_column_count": len(excluded_columns),
+            "action_status_counts": action_status_counts,
+            "unresolved_column_count": len(unresolved_columns),
+            "needs_review_column_count": len(needs_review_columns),
         },
+        "excluded_columns": excluded_columns,
+        "unresolved_columns": unresolved_columns,
+        "needs_review_columns": needs_review_columns,
+        "downstream_handoff": downstream_handoff,
     }
 
 

@@ -21,6 +21,10 @@ _ID_NAME_PATTERN = re.compile(
     r"(^|[_\s-])(id|uuid|guid|identifier|code|account_number|reference_number)($|[_\s-])",
     re.IGNORECASE,
 )
+_ISO_DATE_PATTERN = re.compile(r"^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$")
+_NUMERIC_DATE_PATTERN = re.compile(r"^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$")
+_NAMED_DATE_PATTERN = re.compile(r"[A-Za-z]{3,9}")
+_UNIT_PATTERN = re.compile(r"[A-Za-z%²$€£₹]+")
 
 
 def _json_safe(value: Any) -> Any:
@@ -41,6 +45,32 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _format_signatures(string_values: pd.Series) -> set[str]:
+    """Collect conservative date and unit-format signatures for review."""
+
+    signatures: set[str] = set()
+    for value in string_values.tolist():
+        text = value.strip()
+        if _ISO_DATE_PATTERN.fullmatch(text):
+            signatures.add("iso_date")
+        elif _NUMERIC_DATE_PATTERN.fullmatch(text):
+            signatures.add("numeric_date")
+        elif _NAMED_DATE_PATTERN.search(text) and any(
+            marker in text.lower()
+            for marker in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+        ):
+            signatures.add("named_date")
+
+        has_measurement_signal = bool(re.search(r"\d|[%$€£₹²]", text))
+        if has_measurement_signal:
+            units = _UNIT_PATTERN.findall(text)
+            if units:
+                signatures.add("unit:" + " ".join(sorted(unit.lower() for unit in units)))
+            elif numeric_parse_mask(pd.Series([text])).iloc[0]:
+                signatures.add("unit:none")
+    return signatures
 
 
 def _column_profile(series: pd.Series, row_count: int) -> dict:
@@ -79,6 +109,9 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         sum(value.strip() == "" for value in string_values.tolist())
     )
     non_null_types = {type(value).__name__ for value in values.tolist()}
+    average_string_length = (
+        float(string_values.map(len).mean()) if not string_values.empty else 0.0
+    )
     lower_values = {
         value.strip().lower()
         for value in string_values.tolist()
@@ -87,6 +120,7 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
     case_variation = len(lower_values) < len(
         {value.strip() for value in string_values.tolist() if value.strip()}
     )
+    format_signatures = _format_signatures(string_values)
     non_null_count = len(values)
     numeric_like_count = int(numeric_parse_mask(values).sum())
     datetime_like_count = 0
@@ -125,6 +159,41 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
     if unique_count <= 1:
         warnings.append("Constant or entirely null column.")
 
+    outlier_count = 0
+    skewness = None
+    numeric_values = pd.to_numeric(values, errors="coerce")
+    numeric_values = numeric_values.dropna()
+    if len(numeric_values) >= 4:
+        q1 = numeric_values.quantile(0.25)
+        q3 = numeric_values.quantile(0.75)
+        iqr = q3 - q1
+        if iqr:
+            outlier_count = int(
+                ((numeric_values < q1 - 1.5 * iqr) | (numeric_values > q3 + 1.5 * iqr)).sum()
+            )
+        skewness = float(numeric_values.skew())
+        if abs(skewness) >= 1:
+            warnings.append("Heavily skewed numeric column.")
+
+    if pd.api.types.is_numeric_dtype(series):
+        semantic_type, classification_confidence = "numeric", 1.0
+    elif pd.api.types.is_bool_dtype(series):
+        semantic_type, classification_confidence = "boolean", 1.0
+    elif numeric_like_count and numeric_like_count / max(1, non_null_count) >= 0.8:
+        semantic_type, classification_confidence = "numeric", numeric_like_count / non_null_count
+    elif datetime_like_count and datetime_like_count / max(1, non_null_count) >= 0.8:
+        semantic_type, classification_confidence = "datetime", datetime_like_count / non_null_count
+    elif boolean_like_count and boolean_like_count / max(1, non_null_count) >= 0.8:
+        semantic_type, classification_confidence = "boolean", boolean_like_count / non_null_count
+    elif id_name_signal and unique_ratio >= 0.9:
+        semantic_type, classification_confidence = "identifier", unique_ratio
+    elif unique_ratio <= 0.2 and unique_count > 1:
+        semantic_type, classification_confidence = "categorical", 1.0 - unique_ratio
+    elif string_count and unique_ratio >= 0.9 and variable_length:
+        semantic_type, classification_confidence = "free_text", unique_ratio
+    else:
+        semantic_type, classification_confidence = "unresolved", 0.0
+
     return {
         "name": str(series.name),
         "dtype": str(series.dtype),
@@ -136,6 +205,11 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         "null_like_breakdown": null_like_breakdown,
         "whitespace_count": whitespace_count,
         "empty_string_count": empty_string_count,
+        "whitespace_only_count": int(
+            sum(value.strip() == "" and value != "" for value in string_values.tolist())
+        ),
+        "average_string_length": round(average_string_length, 4),
+        "uniqueness_ratio": round(unique_ratio, 4),
         "mixed_type_count": len(non_null_types),
         "has_mixed_types": len(non_null_types) > 1,
         "has_case_variations": case_variation,
@@ -161,6 +235,19 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
             string_count > 0 and unique_ratio >= _HIGH_CARDINALITY_RATIO
             and variable_length
         ),
+        "semantic_type": semantic_type,
+        "classification_confidence": round(float(classification_confidence), 4),
+        "format_signatures": sorted(format_signatures),
+        "mixed_format_warning": len(format_signatures) > 1,
+        "outlier_count": outlier_count,
+        "outlier_values": [
+            _json_safe(value)
+            for value in numeric_values[
+                (numeric_values < numeric_values.quantile(0.25) - 1.5 * (numeric_values.quantile(0.75) - numeric_values.quantile(0.25)))
+                | (numeric_values > numeric_values.quantile(0.75) + 1.5 * (numeric_values.quantile(0.75) - numeric_values.quantile(0.25)))
+            ].tolist()
+        ] if outlier_count else [],
+        "skewness": round(skewness, 6) if skewness is not None else None,
         "warnings": warnings,
     }
 
@@ -211,6 +298,20 @@ def profile_raw_dataframe(df: pd.DataFrame) -> dict:
         _column_profile(df.iloc[:, index], row_count)
         for index in range(len(df.columns))
     ]
+    duplicate_value_pairs = []
+    for left_index in range(len(df.columns)):
+        for right_index in range(left_index + 1, len(df.columns)):
+            if df.iloc[:, left_index].equals(df.iloc[:, right_index]):
+                duplicate_value_pairs.append([
+                    str(df.columns[left_index]), str(df.columns[right_index])
+                ])
+    duplicate_value_columns = {
+        column
+        for pair in duplicate_value_pairs
+        for column in pair
+    }
+    for profile in column_profiles:
+        profile["duplicate_value_column"] = profile["name"] in duplicate_value_columns
     warnings = [
         {
             "type": (
@@ -236,6 +337,20 @@ def profile_raw_dataframe(df: pd.DataFrame) -> dict:
     null_like_count = sum(
         column_profile["null_like_count"] for column_profile in column_profiles
     )
+    empty_string_count = sum(
+        column_profile["empty_string_count"] for column_profile in column_profiles
+    )
+    whitespace_only_count = sum(
+        column_profile["whitespace_only_count"]
+        for column_profile in column_profiles
+    )
+    null_like_breakdown = {
+        marker: sum(
+            column_profile["null_like_breakdown"].get(marker, 0)
+            for column_profile in column_profiles
+        )
+        for marker in sorted(_NULL_LIKE_VALUES)
+    }
     total_cells = row_count * len(df.columns)
     columns_with_nulls = [
         column_profile["name"]
@@ -246,6 +361,16 @@ def profile_raw_dataframe(df: pd.DataFrame) -> dict:
         column_profile["name"]
         for column_profile in column_profiles
         if column_profile["null_like_count"] > 0
+    ]
+    columns_with_empty_strings = [
+        column_profile["name"]
+        for column_profile in column_profiles
+        if column_profile["empty_string_count"] > 0
+    ]
+    columns_with_whitespace_only_values = [
+        column_profile["name"]
+        for column_profile in column_profiles
+        if column_profile["whitespace_only_count"] > 0
     ]
 
     return {
@@ -269,8 +394,20 @@ def profile_raw_dataframe(df: pd.DataFrame) -> dict:
             ) if total_cells else 0.0,
             "columns_with_nulls": columns_with_nulls,
             "columns_with_null_like_values": columns_with_null_like_values,
+            "empty_string_count": empty_string_count,
+            "empty_string_percentage": round(
+                empty_string_count / total_cells * 100, 4
+            ) if total_cells else 0.0,
+            "whitespace_only_count": whitespace_only_count,
+            "whitespace_only_percentage": round(
+                whitespace_only_count / total_cells * 100, 4
+            ) if total_cells else 0.0,
+            "null_like_breakdown": null_like_breakdown,
+            "columns_with_empty_strings": columns_with_empty_strings,
+            "columns_with_whitespace_only_values": columns_with_whitespace_only_values,
         },
         "warnings": warnings,
+        "duplicate_value_columns": duplicate_value_pairs,
         "metadata": {
             "high_cardinality_threshold": _HIGH_CARDINALITY_RATIO,
             "high_correlation_threshold": _HIGH_CORRELATION_THRESHOLD,

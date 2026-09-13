@@ -24,9 +24,9 @@ def validate_file_extension(file_path: str | os.PathLike[str]) -> str:
     """Return a supported lower-case extension or raise ``ValueError``."""
 
     extension = Path(file_path).suffix.lower().lstrip(".")
-    if extension not in {"csv", "xlsx", "xls"}:
+    if extension not in {"csv", "tsv", "xlsx", "xls", "xlsm"}:
         raise ValueError(
-            "Unsupported file format. Only CSV and Excel files are supported."
+            "Unsupported file format. Supported types are CSV, TSV, XLS, XLSX, and XLSM."
         )
     return extension
 
@@ -49,6 +49,10 @@ def _new_report() -> dict:
         "file_type": None,
         "warnings": [],
         "errors": [],
+        "file_size_bytes": None,
+        "raw_header": [],
+        "worksheet_names": [],
+        "skipped_worksheets": [],
     }
 
 
@@ -94,6 +98,16 @@ def _detect_encoding(raw: bytes) -> tuple[str, float | None, list[str]]:
         encoding = result.get("encoding")
         confidence = result.get("confidence")
         if encoding:
+            if confidence is not None and confidence < 0.80:
+                try:
+                    raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+                else:
+                    warnings.append(
+                        "Low-confidence encoding was replaced with UTF-8 after strict decoding succeeded."
+                    )
+                    return "utf-8", confidence, warnings
             return encoding, confidence, warnings
     except Exception as error:
         warnings.append(f"chardet detection was unavailable: {error}")
@@ -103,7 +117,18 @@ def _detect_encoding(raw: bytes) -> tuple[str, float | None, list[str]]:
 
         match = from_bytes(raw).best()
         if match is not None:
-            return match.encoding, float(match.percent_coherence / 100), warnings
+            confidence = float(match.percent_coherence / 100)
+            if confidence < 0.80:
+                try:
+                    raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+                else:
+                    warnings.append(
+                        "Low-confidence encoding was replaced with UTF-8 after strict decoding succeeded."
+                    )
+                    return "utf-8", confidence, warnings
+            return match.encoding, confidence, warnings
     except Exception as error:
         warnings.append(
             f"charset-normalizer detection was unavailable: {error}"
@@ -125,7 +150,7 @@ def _sniff_csv(raw: bytes, encoding: str) -> tuple[str, bool, list[str]]:
     if not sample.strip():
         raise ValueError("The uploaded CSV file is empty.")
 
-    candidates = ",;\t|:"
+    candidates = ",;\t|"
     scored_delimiters = []
     for candidate in candidates:
         rows = list(csv.reader(io.StringIO(sample), delimiter=candidate))
@@ -135,10 +160,16 @@ def _sniff_csv(raw: bytes, encoding: str) -> tuple[str, bool, list[str]]:
         consistent_rows = sum(width == widths[0] for width in widths)
         scored_delimiters.append((consistent_rows, widths[0] > 1, candidate))
     if scored_delimiters:
-        delimiter = max(scored_delimiters, key=lambda item: (item[1], item[0]))[2]
+        selected = max(scored_delimiters, key=lambda item: (item[1], item[0]))
+        delimiter = selected[2]
+        if not selected[1]:
+            warnings.append("Possible single-column file; review the delimiter.")
     else:
         delimiter = ","
-        warnings.append("Delimiter sniffing failed; comma was used as the fallback.")
+        warnings.append(
+            "Delimiter detection found no candidate; comma was used as the fallback."
+        )
+        warnings.append("Possible single-column file; review the delimiter.")
 
     try:
         header_present = bool(csv.Sniffer().has_header(sample))
@@ -181,6 +212,9 @@ def load_file(file_input: FileInput) -> tuple[pd.DataFrame | None, dict]:
     try:
         raw, extension, file_name = _read_input(file_input)
         report["file_name"] = file_name
+        report["file_size_bytes"] = len(raw)
+        if not raw:
+            raise ValueError("The uploaded file is zero bytes and cannot be loaded.")
         if extension is None:
             if raw.startswith(b"PK"):
                 extension = "xlsx"
@@ -191,21 +225,31 @@ def load_file(file_input: FileInput) -> tuple[pd.DataFrame | None, dict]:
             report["warnings"].append(
                 f"No file extension was provided; content was treated as {extension}."
             )
-        if extension not in {"csv", "xlsx", "xls"}:
+        if extension not in {"csv", "tsv", "xlsx", "xls", "xlsm"}:
             raise ValueError(
-                "Unsupported file format. Provide a .csv, .xlsx, or .xls file."
+                "Unsupported file format. Provide a .csv, .tsv, .xlsx, .xls, or .xlsm file."
             )
         report["file_type"] = extension
 
-        if extension == "csv":
+        if extension in {"csv", "tsv"}:
             encoding, confidence, detection_warnings = _detect_encoding(raw)
             report["encoding"] = encoding
             report["encoding_confidence"] = confidence
             report["warnings"].extend(detection_warnings)
+            if confidence is not None and confidence < 0.80:
+                report["warnings"].append(
+                    f"Encoding detection confidence is low ({confidence:.2f}); review the decoded text."
+                )
             delimiter, header_present, sniff_warnings = _sniff_csv(raw, encoding)
+            if extension == "tsv":
+                delimiter = "\t"
             report["delimiter"] = delimiter
             report["header_present"] = header_present
             report["warnings"].extend(sniff_warnings)
+            decoded_sample = raw.decode(encoding)
+            report["raw_header"] = next(
+                csv.reader(io.StringIO(decoded_sample), delimiter=delimiter), []
+            )
             df = pd.read_csv(
                 io.BytesIO(raw),
                 encoding=encoding,
@@ -224,13 +268,17 @@ def load_file(file_input: FileInput) -> tuple[pd.DataFrame | None, dict]:
         else:
             report["delimiter"] = None
             report["header_present"] = True
+            workbook = pd.ExcelFile(io.BytesIO(raw), engine=None)
+            report["worksheet_names"] = list(workbook.sheet_names)
+            report["skipped_worksheets"] = list(workbook.sheet_names[1:])
             df = pd.read_excel(
-                io.BytesIO(raw),
+                workbook,
                 sheet_name=0,
                 keep_default_na=False,
             )
             report["warnings"].append(
-                "Only the first worksheet was loaded from the Excel workbook."
+                "Only the first worksheet was loaded from the Excel workbook; "
+                f"skipped worksheets: {report['skipped_worksheets'] or 'None'}."
             )
 
         report["raw_profile"] = profile_raw_dataframe(df)

@@ -1,43 +1,86 @@
 # EDA-Guider Project Guide
 
-## 1. Purpose
+## 1. Project Purpose
 
-EDA-Guider is a rule-based assistant for the early stages of exploratory data analysis (EDA). It accepts CSV and Excel files, records how they were loaded, profiles the original values, creates an evidence-based preprocessing plan, applies only safe transformations to an internal copy, validates the result, and generates a readable Markdown report.
+EDA-Guider is a privacy-conscious, rule-based exploratory data analysis assistant. It loads a raw CSV, TSV, XLS, XLSX, or XLSM dataset; profiles it without changing the source; creates an evidence-based preprocessing plan; applies safe transformations to an internal copy; validates the result; generates raw and cleaned profiling reports; and prepares structured evidence for a future LangChain/LLM reporting stage.
 
-The uploaded source file is never overwritten. The processed DataFrame is separate from the original input and can be saved as a new CSV.
+The original uploaded file is never overwritten. The cleaned DataFrame is an internal working object and can be exported separately as a processed CSV.
 
-The currently connected pipeline implements ingestion through preprocessing summary. Statistical analysis, visualization selection, insight synthesis, and the complete frontend workflow are separate stages and are not yet fully connected to this pipeline.
+The current implementation is strongest in ingestion, profiling, preprocessing, validation, audit logging, and report generation. LangChain has not yet been connected to an external model. The current agent work prepares a privacy-safe input boundary for that future integration.
 
-## 2. Main Pipeline
+## 2. Current End-to-End Flow
 
-The active entry point is:
+```text
+User or runner provides a dataset
+        |
+        v
+File type and byte validation
+        |
+        v
+CSV/TSV or Excel ingestion
+        |
+        v
+Raw header and structure validation
+        |
+        v
+Raw profile and YData raw HTML report
+        |
+        v
+Rule-based preprocessing plan
+        |
+        v
+Safe preprocessing on a deep internal copy
+        |
+        v
+Conversion and structural validation
+        |
+        v
+Cleaned profile and YData cleaned HTML report
+        |
+        v
+Before/after summary and downstream handoff
+        |
+        v
+Privacy-safe aggregate evidence for future LangChain use
+```
+
+The active pipeline entry point is:
 
 ```text
 backend/app/preprocessing/pipeline.py
 run_preprocessing_pipeline(file_path_or_buffer)
 ```
 
-The execution order is:
+## 3. Main Modules
 
-```text
-1. Read CSV or Excel input
-2. Detect file metadata
-3. Build the raw DataFrame
-4. Profile the untouched raw values
-5. Validate and normalize structure
-6. Generate a rule-based preprocessing plan
-7. Execute safe plan actions on a deep copy
-8. Check row and column preservation
-9. Profile the cleaned internal copy
-10. Build the before-and-after summary
-11. Save or return the processed data and report
-```
+| Responsibility | Implementation |
+| --- | --- |
+| File loading | `backend/app/ingestion/loader.py` |
+| Structure validation | `backend/app/ingestion/structural.py` |
+| Shared numeric parsing | `backend/app/profiling/parsing.py` |
+| Raw and cleaned profiling | `backend/app/profiling/raw_profiler.py` |
+| Rule generation | `backend/app/preprocessing/raw_rule_engine.py` |
+| Safe transformations | `backend/app/preprocessing/preprocessor.py` |
+| Pipeline orchestration | `backend/app/preprocessing/pipeline.py` |
+| Transformation validation | `backend/app/execution/validator.py` |
+| Before/after summary and handoff | `backend/app/preprocessing/summary.py` |
+| Markdown report | `backend/app/reporting/guide.py` |
+| YData HTML reports | `_generate_ydata_profile` in `pipeline.py` |
+| Future LLM input preparation | `backend/app/agent/agent.py` |
+| Local runner | `backend/run_sample_pipeline.py` |
+| Tests | `backend/tests/` |
 
-The structured pipeline result contains:
+The active Parts 1 to 6 flow uses `raw_profiler.py` and `raw_rule_engine.py`. Older profiling and rule-engine modules remain in the repository as earlier or alternative implementations but are not the controlling path for the current preprocessing pipeline.
+
+## 4. Pipeline Result
+
+`run_preprocessing_pipeline` returns a structured dictionary containing:
 
 ```text
 status
 ingestion_report
+raw_ydata_profile_report
+cleaned_ydata_profile_report
 structural_report
 raw_profile_report
 preprocessing_plan
@@ -47,141 +90,210 @@ cleaned_dataframe
 pipeline_error
 ```
 
-If a stage fails, the pipeline returns the reports already produced and records the failing stage, exception type, and message in `pipeline_error`.
+`cleaned_dataframe` is retained for internal processing and local export. It should not be sent directly to an external LLM or exposed as the LLM prompt input.
 
-## 3. Project Modules
+If a stage fails, the pipeline returns structured information from completed stages and places the failing stage, exception type, and message in `pipeline_error`.
 
-| Responsibility | Main implementation |
-| --- | --- |
-| File loading | `backend/app/ingestion/loader.py` |
-| Structure checks | `backend/app/ingestion/structural.py` |
-| Raw profiling | `backend/app/profiling/raw_profiler.py` |
-| Shared numeric parsing | `backend/app/profiling/parsing.py` |
-| Rule generation | `backend/app/preprocessing/raw_rule_engine.py` |
-| Preprocessing execution | `backend/app/preprocessing/preprocessor.py` |
-| Pipeline orchestration | `backend/app/preprocessing/pipeline.py` |
-| Result validation | `backend/app/execution/validator.py` |
-| Before-and-after summary | `backend/app/preprocessing/summary.py` |
-| Markdown report | `backend/app/reporting/guide.py` |
-| Local runner | `backend/run_sample_pipeline.py` |
-| Tests | `backend/tests/` |
+## 5. Part 1 - File Type and Ingestion
 
-The active ingestion path uses `raw_profiler.py` and `raw_rule_engine.py`. The older `dataset_profiler.py`, `column_profiler.py`, and `rule_engine.py` modules contain additional or earlier profiling concepts but are not the source of the Parts 1 to 6 report.
+### 5.1 File extension detection
 
-## 4. Part 1 - File Ingestion
+The loader determines the file type from the filename extension. Supported extensions are:
 
-### 4.1 Input validation
+- `.csv`
+- `.tsv`
+- `.xls`
+- `.xlsx`
+- `.xlsm`
 
-The loader accepts a filesystem path or readable file-like object. Supported formats are `.csv`, `.xlsx`, and `.xls`. Unsupported extensions and unreadable inputs produce a structured ingestion error.
+Unsupported extensions are rejected with a clear structured error before parsing.
 
-### 4.2 CSV ingestion
+A file-like object uses its `.name` attribute when available. If no extension is available, the loader may use file signatures as a fallback and records a warning that the type was inferred.
 
-For CSV files, the loader:
+### 5.2 Zero-byte validation
 
-1. Reads the file bytes once.
-2. Detects a UTF-8 byte-order mark when present.
-3. Attempts encoding detection with `chardet`.
-4. Falls back to `charset-normalizer` when available.
-5. Falls back to UTF-8 if no detector is available.
-6. Detects comma, semicolon, tab, pipe, or colon delimiters.
-7. Chooses the delimiter producing the most consistent row widths.
-8. Respects CSV quoting, including values such as `"1,610"`.
-9. Detects whether the first row is a header.
-10. Loads the data into a Pandas DataFrame.
+The raw bytes are read once and their size is recorded. A zero-byte file is rejected before any CSV or Excel parser is called.
 
-Encoding, confidence, delimiter, header status, and fallback warnings are recorded.
+### 5.3 Encoding detection
 
-### 4.3 Excel ingestion
+For text files, the loader:
 
-For Excel files:
+1. Checks for a UTF-8 byte-order mark.
+2. Attempts detection from the raw byte sample using `chardet`.
+3. Falls back to `charset-normalizer` when available.
+4. Falls back to UTF-8 if detection is unavailable.
+5. Records the selected encoding and confidence.
+6. Warns when confidence is low.
+7. Prefers strict UTF-8 decoding when a low-confidence detector result is valid UTF-8.
 
-1. The workbook is loaded through Pandas.
-2. The first worksheet is selected.
-3. The report records that only the first worksheet was loaded.
-4. The worksheet becomes the raw DataFrame.
+### 5.4 CSV and TSV parsing
 
-Excel support requires `openpyxl` for `.xlsx` files and `xlrd` for legacy `.xls` files.
+The loader supports comma, semicolon, tab, and pipe delimiters. It scores candidates by parsed row-width consistency and respects CSV quoting, so a value such as `"1,610"` is not mistaken for an extra column.
 
-### 4.4 Ingestion report
+If delimiter detection cannot find a useful candidate, the loader defaults to comma and records a possible single-column warning. TSV files use tab as their known delimiter.
 
-The ingestion report records file name, file type, encoding, encoding confidence, delimiter, header status, row count, column count, warnings, and errors. A failed load stops the pipeline with a structured error rather than an uncontrolled crash.
+Header detection uses the first-row detector and defaults to assuming a header when detection fails. The raw header row is also captured as plain text before Pandas header normalization.
 
-## 5. Part 2 - Structure Validation
+### 5.5 Excel parsing
 
-Structure validation runs before the preprocessing plan is generated.
+For XLS, XLSX, and XLSM files:
 
-### 5.1 Fatal checks
+1. The workbook is opened through Pandas.
+2. All worksheet names are collected.
+3. Only the first worksheet is loaded into the DataFrame.
+4. Remaining worksheets are recorded as skipped.
+5. A warning describes the selected worksheet and skipped sheets.
 
-The dataset cannot continue when the loaded object is not a DataFrame, the DataFrame has zero columns, or the DataFrame has zero rows.
+Excel support requires the appropriate packages in `backend/requirements.txt`, including `openpyxl` for modern Excel files and `xlrd` for legacy XLS files.
 
-### 5.2 Duplicate columns
+### 5.6 Structured ingestion report
 
-Duplicate column names are detected and made unique internally. The original names remain available in the raw profile. For example:
+The ingestion report contains:
+
+- File name
+- File type
+- File size
+- Encoding
+- Encoding confidence
+- Delimiter
+- Header status
+- Raw header
+- Worksheet names
+- Skipped worksheets
+- Row and column counts
+- Warnings
+- Errors
+
+Load failures are returned as structured errors and do not crash the caller.
+
+## 6. Part 2 - Header and Structure Normalization
+
+Structure validation receives the loaded DataFrame and returns a copied, internally normalized DataFrame.
+
+### 6.1 Fatal structure checks
+
+Processing stops when:
+
+- The object is not a Pandas DataFrame.
+- The DataFrame has zero columns.
+- The DataFrame has zero rows.
+
+### 6.2 Header normalization
+
+Column names are normalized without changing data values:
+
+- Trim surrounding whitespace.
+- Convert spacing and special characters to underscores.
+- Normalize names to lowercase.
+- Assign generic names such as `column_1` to blank or `Unnamed:` headers.
+- Make normalized names unique with deterministic suffixes.
+
+For example:
 
 ```text
-value, value, city
+" Customer Name ", "Customer-Name"
 ```
 
-becomes:
+becomes names such as:
 
 ```text
-value, value_2, city
+customer_name, customer_name_2
 ```
 
-No user data is deleted.
+The report records original names, normalized names, and renames.
 
-### 5.3 Index-like columns
+### 6.3 Duplicate columns
 
-A likely exported row-index column is detected when its name is blank, `Unnamed: 0`, or `index`, its values are numeric, and its values form a zero-based sequence from `0` to `row_count - 1`.
+Two duplicate concepts are tracked separately:
 
-The column is retained, not silently dropped. The rule engine creates `review_index_column` so the user can decide whether it should be removed later.
+1. Duplicate header names.
+2. Different headers whose complete column values are identical.
 
-### 5.4 Duplicate rows
+Neither is removed automatically. Identical-value columns receive a review action.
 
-Duplicate rows are detected during execution and recorded. They are retained by default because automatic deletion could remove legitimate repeated observations.
+### 6.4 Index-like columns
 
-### 5.5 Structural report
+A blank, `Unnamed: 0`, or `index` column containing a zero-based numeric sequence is flagged as an exported index. It is retained and receives `review_index_column`; it is not silently dropped.
 
-The structural report includes validation status, fatal status, row count, column count, duplicate columns, renamed columns, index-like columns, warnings, and errors.
+### 6.5 Dataset-size warnings
 
-## 6. Part 3 - Raw Data Profiling
+The validator warns about:
 
-The raw profile is generated from the loaded DataFrame before any cleaning action. Profiling is read-only and does not alter values, dtypes, headers, or row order.
+- One-row datasets.
+- Very small datasets below the configured practical minimum.
+- Single-column datasets where correlation and multi-column analysis are limited.
 
-### 6.1 Per-column observations
+## 7. Part 3 - Raw Profile
 
-For every column, the profiler records:
+The raw profile is generated before preprocessing. It is read-only and describes the original loaded values.
 
-- Column name and raw Pandas dtype.
-- Sample values and unique-value count.
-- Actual null count and percentage.
-- Null-like count and marker breakdown.
-- Whitespace count and empty-string count.
-- Mixed Python type count and mixed-type status.
-- Case-variation status.
-- Numeric-like, datetime-like, and Boolean-like percentages.
-- Identifier, index-like, categorical, and free-text signals.
-- Column warnings.
+### 7.1 Per-column fields
 
-### 6.2 Dataset-level observations
+Each column profile includes:
 
-The profile also records total cells, actual nulls, null-like values, total missing values, missing percentages, columns containing missing values, and high-correlation warnings for numeric columns.
+- Column name
+- Raw dtype
+- Sample values for local reports
+- Actual null count and percentage
+- Null-like count and marker breakdown
+- Empty-string count
+- Whitespace-only count
+- Leading/trailing whitespace count
+- Mixed Python type count
+- Case-variation signal
+- Average string length
+- Unique count
+- Uniqueness ratio
+- Numeric parseability percentage
+- Datetime parseability percentage
+- Boolean parseability percentage
+- Identifier signal
+- Index signal
+- Categorical signal
+- Free-text signal
+- Semantic type
+- Classification confidence
+- Format signatures
+- Mixed-format warning
+- Outlier count and values for local reports
+- Skewness
+- Quality warnings
 
-### 6.3 Warning types
+### 7.2 Semantic types
 
-The active profiler can report high missingness at 50 percent or more, high cardinality at 90 percent or more unique values, constant or entirely null columns, and high absolute Pearson correlation of at least `0.95`.
+The classifier can assign:
 
-These are observations, not automatic deletion instructions.
+- `numeric`
+- `datetime`
+- `boolean`
+- `categorical`
+- `identifier`
+- `free_text`
+- `unresolved`
 
-## 7. Missing-Value and Text Quality Rules
+Every classification has a confidence between `0.0` and `1.0`. Unresolved or low-confidence columns are not guessed into a conversion.
 
-### 7.1 Actual missing values
+### 7.3 Dataset-level profile
 
-Actual missing values include `None`, `NaN`, and other values recognized by Pandas as missing.
+The dataset profile includes:
 
-### 7.2 Null-like text
+- Total cells
+- Actual null totals
+- Null-like totals
+- Total missingness
+- Empty-string totals
+- Whitespace-only totals
+- Marker-by-marker null-like totals
+- Columns affected by each condition
+- Identical-value column pairs
+- High-correlation warnings
+- High-missingness warnings
+- High-cardinality warnings
+- Constant-column warnings
 
-The following markers are recognized case-insensitively after trimming:
+## 8. Missing Values and Text Policy
+
+The system separates actual missing values from text markers such as:
 
 ```text
 ""
@@ -193,235 +305,673 @@ The following markers are recognized case-insensitively after trimming:
 "missing"
 ```
 
-### 7.3 Planned missing-value actions
+The raw report counts each category separately. The current rule-based policy is conservative:
 
-When evidence is present, the rule engine creates `replace_null_like` and `replace_empty_strings`. These actions convert matching text in the internal copy to Pandas missing values. They do not modify the uploaded source file. Actual missing values are not filled or imputed automatically.
+- Report missing and null-like values.
+- Preserve them in the internal copy.
+- Do not automatically fill them.
+- Do not automatically delete them.
+- Do not silently convert them into another value.
 
-### 7.4 Whitespace
+Whitespace cleanup is different because it is non-destructive normalization. Leading and trailing whitespace is stripped from string columns in the internal copy, while non-string values remain unchanged.
 
-Leading and trailing whitespace is measured for string values. Execution strips it from string/object columns. Non-string values are preserved.
+## 9. Numeric, Date, Boolean, and Format Detection
 
-## 8. Numeric, Datetime, and Boolean Profiling
+### 9.1 Numeric parser
 
-### 8.1 Safe numeric parser
+The shared parser in `profiling/parsing.py` accepts:
 
-`backend/app/profiling/parsing.py` accepts plain integers, decimals, negative values, Western grouped values such as `1,610` and `12,345.67`, and Indian grouped values such as `89,17,000` and `1,15,44,000`.
+- Integers
+- Decimal values
+- Negative values
+- Western grouped values such as `1,610` and `12,345.67`
+- Indian grouped values such as `89,17,000`
 
-It rejects inconsistent values such as `1,2,3` instead of guessing their meaning. Currency symbols, units, and percentage symbols are not removed by this parser because those require separate semantic rules.
+It rejects inconsistent grouping such as `1,2,3` rather than guessing.
 
-### 8.2 Numeric profiling
+Currency symbols, percentages, units, and measurement conversions are not automatically stripped by the numeric parser.
 
-The profiler calculates the percentage of semantic non-null values that can be parsed safely. A high percentage in a string-like column can produce `convert_to_numeric`.
+### 9.2 Datetime detection
 
-### 8.3 Datetime profiling
+String-like values are tested with mixed-format datetime parsing. Numeric and Boolean columns are excluded from date inference to prevent ordinary numbers from becoming timestamps accidentally.
 
-String-like values are checked with mixed-format datetime parsing. Numeric and Boolean columns are excluded so ordinary numbers are not misinterpreted as timestamps.
+### 9.3 Boolean detection
 
-### 8.4 Boolean profiling
+The parser recognizes `true`, `false`, `yes`, `no`, `y`, `n`, `1`, and `0`, ignoring case and surrounding whitespace.
 
-Boolean-like values include `true`, `false`, `yes`, `no`, `y`, `n`, `1`, and `0`, checked case-insensitively after trimming.
+### 9.4 Mixed-format detection
 
-## 9. Part 4 - Rule-Based Preprocessing Plan
+The profiler records conservative format signatures for:
 
-The rule engine receives the raw DataFrame and raw profile. It produces a `PreprocessingPlan` without modifying data.
+- ISO dates
+- Numeric slash-separated dates
+- Named-month dates
+- Unit-bearing values
+- Currency symbols
+- Percentages
+- Unitless numeric values
 
-Each action contains target columns, an action name, confidence from `0.0` to `1.0`, a reason, and optional parameters.
+When multiple incompatible signatures appear in one column, the rule engine creates `review_mixed_format` and does not assume a conversion.
 
-### 9.1 Active actions
+## 10. Part 4 - Rule-Based Preprocessing Plan
 
-| Action | Purpose | Default behavior |
+The rule engine receives the raw DataFrame and raw profile and creates a validated `PreprocessingPlan`. Plan generation does not modify data.
+
+Each action contains:
+
+- Target columns
+- Action name
+- Confidence
+- Reason
+- Optional parameters
+
+### 10.1 Main actions
+
+| Action | Meaning | Default behavior |
 | --- | --- | --- |
-| `strip_whitespace` | Remove outer whitespace | Execute internally |
-| `replace_null_like` | Convert known missing markers | Execute internally |
-| `replace_empty_strings` | Convert empty strings | Execute internally |
-| `convert_to_numeric` | Convert high-confidence numeric strings | Execute only when safe |
-| `convert_to_datetime` | Convert high-confidence datetime strings | Execute only when safe |
-| `convert_to_boolean` | Convert high-confidence Boolean strings | Execute only when safe |
-| `classify_as_categorical` | Identify low-cardinality data | May trigger case normalization |
-| `normalize_case` | Normalize confirmed categorical text | Execute for confirmed categorical data |
-| `preserve_identifier` | Protect likely IDs | Skip transformation |
-| `preserve_free_text` | Protect high-cardinality text | Skip transformation |
-| `review_index_column` | Flag exported index columns | Skip; manual review required |
+| `strip_whitespace` | Remove outer text whitespace | Execute internally |
+| `convert_to_numeric` | Convert high-confidence numeric strings | Execute only if lossless |
+| `convert_to_datetime` | Convert high-confidence dates | Execute only if lossless |
+| `convert_to_boolean` | Convert recognized Boolean strings | Execute only if lossless |
+| `classify_as_categorical` | Record categorical classification | Log without changing values |
+| `normalize_case` | Normalize confirmed categories | Execute explicitly |
+| `preserve_identifier` | Protect identifier columns | Preserve and log |
+| `preserve_free_text` | Protect free text | Preserve and log |
+| `review_index_column` | Flag exported index | Needs review |
+| `review_duplicate_column` | Flag identical-value columns | Needs review |
+| `review_outliers` | Report IQR outliers | Needs review; retain values |
+| `review_skewness` | Report heavy skew | Needs review |
+| `review_mixed_format` | Flag incompatible formats | Needs review |
+| `review_semantic_type` | Flag unresolved type | Needs review |
 
-### 9.2 Confidence policy
+Missing-value replacement actions are intentionally not generated by the current active rule path because the checklist requires reporting and preservation rather than automatic filling or deletion.
 
-Conversion confidence must be at least `0.80`. Lower-confidence conversions are skipped and logged for review. Categorical normalization also requires confidence of at least `0.80`.
+### 10.2 Confidence rules
 
-### 9.3 Identifier and free-text protection
+High-confidence conversions require confidence of at least `0.80`. Lower-confidence conversions receive review treatment. Categorical classification and normalization are also confidence-gated.
 
-High-cardinality columns with names containing signals such as `id`, `uuid`, `identifier`, or `code` can be preserved as identifiers. High-cardinality variable-length strings can be preserved as free text because automatic conversion or normalization could destroy meaning.
+## 11. Part 5 - Internal Preprocessing
 
-## 10. Part 5 - Safe Internal Preprocessing
+The executor starts with a deep copy. The source file and raw DataFrame remain unchanged.
 
-The executor creates `df.copy(deep=True)` before applying any transformation. The source DataFrame and uploaded file remain unchanged.
+### 11.1 Execution order
 
-### 10.1 Fixed execution order
+1. Strip whitespace from string/object columns.
+2. Detect duplicate column names.
+3. Detect exact duplicate rows.
+4. Apply high-confidence numeric conversion.
+5. Apply high-confidence datetime conversion.
+6. Apply high-confidence Boolean conversion.
+7. Record categorical classification.
+8. Apply explicit categorical case normalization.
+9. Record preservation and review decisions.
+10. Return the cleaned copy and complete execution log.
 
-1. Apply planned null-like replacement.
-2. Apply planned empty-string replacement.
-3. Strip leading and trailing whitespace from all string/object columns.
-4. Detect duplicate columns and retain them for review.
-5. Detect duplicate rows and retain them for review.
-6. Apply high-confidence numeric, datetime, and Boolean conversions.
-7. Apply case normalization for confirmed categorical columns.
-8. Record preservation and review-only actions as skipped.
-9. Return the cleaned internal DataFrame and execution log.
+### 11.2 Conversion safety
 
-### 10.2 Conversion protection
+For every conversion, the executor records null percentage before and after conversion and counts invalid non-null values that would become missing.
 
-Before accepting a numeric, datetime, or Boolean conversion, the executor compares null percentage before and after, counts non-null values that became missing, and checks the configured data-loss threshold.
+A conversion is rejected and the original values are restored when:
 
-If any non-null value becomes missing, or loss exceeds the threshold, the original column is restored and the action receives status `rejected`. This prevents invalid values such as `bad` from silently becoming `NaN`.
+- Any non-null value would be lost.
+- The configured data-loss threshold would be exceeded.
+- The conversion confidence is below the execution threshold.
+- The column is entirely null.
 
-Grouped numeric values such as `"1,610"` are parsed through the shared parser and become `1610`, not missing.
+Unknown Boolean values such as `maybe` cause rejection rather than silently becoming false or missing.
 
-### 10.3 Review-only actions
+### 11.3 Action statuses
 
-`review_index_column`, `preserve_identifier`, `preserve_free_text`, and actions beginning with `review_` are recorded but not automatically applied.
+Every action has one of these statuses:
 
-### 10.4 Execution log
+- `executed`: transformation or detection completed.
+- `skipped`: deliberately not applicable or entirely null.
+- `rejected`: conversion would lose data and was rolled back.
+- `needs_review`: deliberate human-review decision.
+- `unsupported`: no executor exists for an unknown action, which is a system issue.
 
-Each entry records columns, action, status, reason, confidence when relevant, values changed when relevant, duplicate counts when relevant, null percentages before and after conversion, data-loss percentage, and invalid non-null count.
+## 12. Outliers and Skewness
 
-Possible statuses are `executed`, `skipped`, and `rejected`.
+Every numeric column is checked using an IQR-based method. The report records:
 
-## 11. Part 6 - Post-Processing Validation
+- Outlier count
+- Outlier values in local reports
+- Skewness
+- Heavy-skew warning when absolute skewness reaches the configured threshold
 
-After execution, `Validator.compare` checks the raw and cleaned DataFrames.
+Outliers are not automatically removed or corrected. The rule engine creates review actions so downstream statistics and visualization logic can decide how to handle them.
 
-The validation requires the same row count, the same column names and order, and a non-empty cleaned DataFrame. Values and dtypes may change, but preprocessing cannot silently add or remove rows or columns. A failure is returned as a structured `preprocessing_validation` error.
+## 13. Part 6 - Validation and Immutability
 
-## 12. Part 7 - Before-and-After Summary
+After preprocessing, validation checks:
 
-The cleaned internal copy is profiled again. The summary compares raw and cleaned profiles positionally and reports raw and cleaned row counts, column counts, changed-column count, execution-log count, column-level actions, before-and-after dtypes, null percentages, unique counts, and null summaries.
+- Row count preservation.
+- Column name and order preservation.
+- Non-empty cleaned DataFrame.
+- Original raw DataFrame equality with its first deep snapshot.
 
-The changed-column count includes columns with a profile difference or a related execution action. It is not limited to columns whose displayed values visibly changed.
+The pipeline returns a structured validation error if preprocessing changes row or column structure unexpectedly.
 
-## 13. Generated Markdown Report
+## 14. Part 7 - Cleaned Profile and Before/After Summary
 
-`backend/app/reporting/guide.py` converts the structured result into Markdown without rerunning the pipeline or modifying data.
+The cleaned internal DataFrame is re-profiled using the same profiler as the raw data.
 
-The report contains:
+The summary contains:
 
-1. File ingestion metadata.
-2. Structure validation results.
-3. Index-like column warnings.
-4. Raw profile metrics.
-5. Missing-value and null-like summaries.
-6. Per-column profile table.
-7. Rule-based preprocessing plan.
-8. Internal execution log.
-9. Raw-versus-cleaned summary.
-10. Planned future EDA steps.
+- Raw profile
+- Cleaned profile
+- Raw and cleaned shape
+- Column-by-column positional diff
+- Dtype before and after
+- Null percentage before and after
+- Unique count before and after
+- Related actions per column
+- Original null summary
+- Execution log
+- Action-status totals
+- Changed-column count
+- Unresolved columns
+- Needs-review columns
+- Excluded columns and reasons
+- Downstream handoff metadata
 
-## 14. Running a New Dataset
+## 15. YData Profiling Reports
 
-Edit `CSV_PATH` in `backend/run_sample_pipeline.py`, then run:
+The pipeline generates two separate YData Profiling HTML reports using the same `_generate_ydata_profile` function in `pipeline.py`.
+
+### 15.1 Raw report
+
+Generated immediately after ingestion and before preprocessing:
+
+```text
+<dataset>_raw_profiling_report.html
+```
+
+This report describes the loaded raw DataFrame.
+
+### 15.2 Cleaned report
+
+Generated after preprocessing and structural validation:
+
+```text
+<dataset>_cleaned_profiling_report.html
+```
+
+This report describes the cleaned internal DataFrame.
+
+YData Profiling uses minimal mode for compatibility and performance. If the package is not installed, the pipeline records an `unavailable` status instead of crashing the preprocessing process.
+
+The HTML reports are local artifacts. They may contain sample values, so they must not be sent directly to an external LLM.
+
+## 16. Markdown Preprocessing Report
+
+`backend/app/reporting/guide.py` generates the user-readable Markdown report. It reads the structured pipeline result and does not rerun or modify the dataset.
+
+The Markdown report includes:
+
+- Ingestion metadata
+- Structure validation
+- Duplicate and index warnings
+- Raw missingness breakdown
+- Semantic type and confidence table
+- Parseability percentages
+- Outlier and skewness fields
+- Preprocessing plan
+- Execution log
+- Status totals
+- Raw/cleaned shape comparison
+- Cleaned missingness
+- Snapshot validation
+- Unresolved and needs-review columns
+- Exclusion reasons
+- Downstream eligible columns
+- Sampling metadata
+- Future statistics and visualization stages
+
+## 17. Privacy-Safe LangChain Input Preparation
+
+The agent module now contains:
+
+```python
+build_llm_evidence_input(pipeline_result)
+```
+
+This function prepares the future LangChain input from existing structured reports. It does not call an LLM yet.
+
+### 17.1 Included evidence
+
+The evidence payload includes:
+
+- Dataset name and pipeline status
+- Ingestion metadata
+- Structural findings
+- Aggregate raw profile metrics
+- Semantic classifications and confidence
+- Missingness totals and percentages
+- Parseability percentages
+- Outlier and skewness metadata
+- Preprocessing plan
+- Execution actions and measurements
+- Cleaned profile metadata
+- Before/after summary
+- Excluded and needs-review columns
+- Downstream eligible columns
+- Raw and cleaned YData report status
+
+### 17.2 Excluded content
+
+The LLM evidence payload deliberately excludes:
+
+- The raw DataFrame
+- The cleaned DataFrame
+- Raw sample values
+- Outlier values
+- YData HTML content
+- Direct row-level dataset values
+
+Privacy metadata records that these fields were removed. This allows a future LLM to explain computed evidence without receiving the actual dataset.
+
+### 17.3 Intended future LangChain flow
+
+```text
+Pipeline result
+    |
+    v
+build_llm_evidence_input
+    |
+    v
+Privacy-safe aggregate JSON
+    |
+    v
+LangChain prompt/model
+    |
+    v
+Structured overall report
+    |
+    v
+Evidence validation
+```
+
+The LLM should interpret and explain locally computed facts. It should not be responsible for calculating statistics from raw rows or inventing unsupported findings.
+
+## 18. Downstream Handoff
+
+The preprocessing summary contains a `downstream_handoff` object with:
+
+- `eligible_columns`
+- `excluded_columns`
+- Exclusion reasons
+- Sampling metadata
+- Original row count
+- Analysis row count
+- Maximum analysis sample size
+- Confirmation that the cleaned dataset was not changed by sampling
+
+Identifiers, free text, unresolved columns, and review-flagged columns are excluded from downstream analysis metadata. The cleaned DataFrame itself is not sampled or altered at this stage.
+
+## 19. Running a New Dataset
+
+Configure the path in:
+
+```text
+backend/run_sample_pipeline.py
+```
+
+Run from the project root with an environment containing the backend dependencies:
 
 ```powershell
-cd backend
-python run_sample_pipeline.py
+.\.myvenv\Scripts\python.exe backend\run_sample_pipeline.py
 ```
 
-The runner checks the path, calls the pipeline, prints stage output, saves `<input-name>_processed.csv`, saves `<input-name>_eda_report.md`, and prints a cleaned-data preview. The original file is not overwritten.
+The runner prints:
 
-## 15. Europe Dataset Example
+- Pipeline status
+- Raw YData report status
+- Cleaned YData report status
+- Ingestion and structure details
+- Raw profile
+- Preprocessing plan
+- Execution log
+- Summary
+- Cleaned-data preview
 
-For `europe.csv`, the pipeline identifies the blank-header first column as an exported index and creates a review action. It recognizes grouped numeric values in the source data.
-
-The value:
+For a path input, it writes:
 
 ```text
-population_per_sq_km = "1,610"
+<dataset>_processed.csv
+<dataset>_eda_report.md
+<dataset>_raw_profiling_report.html
+<dataset>_cleaned_profiling_report.html
 ```
 
-is safely converted to:
+The input dataset is not overwritten.
 
-```text
-population_per_sq_km = 1610.0
-```
+## 20. Europe Dataset Example
 
-No conversion-created null is introduced. The index-like column is retained because dropping it automatically could be destructive; the report tells the user to review it.
+For `europe.csv`:
 
-## 16. Testing
+- The dataset loads successfully with 36 rows and 11 columns.
+- The blank first column is identified as an exported index and retained for review.
+- Grouped numeric values such as `"1,610"` are converted safely to `1610.0`.
+- Numeric conversion introduces no nulls.
+- Raw and cleaned YData reports are generated in the supported environment.
+- The raw snapshot remains unchanged.
+- Outliers and skewness are reported for review rather than automatically corrected.
 
-Run the backend tests from the backend directory:
+## 21. Testing
+
+Run the backend tests:
 
 ```powershell
 cd backend
 python -m pytest -q
 ```
 
-The tests cover CSV and Excel loading, delimiter behavior, duplicate columns, invalid structures, raw profiling, null-like and empty-string rules, grouped numeric parsing, malformed numeric values, exported index detection, whitespace cleanup, Boolean and categorical handling, duplicate-row reporting, lossy conversion rejection, row and column preservation, pipeline result structure, and Markdown report generation.
+The test suite covers:
 
-The Excel test requires the dependencies in `backend/requirements.txt`. If `openpyxl` is unavailable, CSV and preprocessing tests can still run, but Excel test setup will fail.
+- File extensions and zero-byte inputs
+- CSV, TSV, and Excel ingestion
+- Encoding and delimiter behavior
+- Header and duplicate-column handling
+- Index-like and identical-value columns
+- Raw profiling immutability
+- Missingness rollups
+- Numeric, datetime, and Boolean parseability
+- Grouped numeric parsing
+- Semantic classification and confidence
+- Mixed date and unit formats
+- Outliers and skewness
+- Safe conversion and rollback
+- Unknown versus review actions
+- Categorical normalization
+- Identifier and free-text preservation
+- Unresolved-column review
+- Snapshot validation
+- Cleaned re-profiling
+- Before/after summary
+- Downstream handoff
+- Privacy-safe LLM evidence extraction
+- Markdown report generation
 
-## 17. Dependencies
+The Excel test requires `openpyxl` in the selected environment. YData HTML generation requires a compatible Python environment with `ydata-profiling` installed.
 
-Dependencies are listed in `backend/requirements.txt`.
+## 22. Dependencies
 
-Important packages include Pandas, `chardet`, `charset-normalizer`, `openpyxl`, `xlrd`, Pydantic, Pytest, NumPy, scikit-learn, and Plotly.
+Backend dependencies are declared in `backend/requirements.txt`.
 
-## 18. Current Status and Boundaries
+Important packages include:
 
-### Implemented and connected
+- Pandas for DataFrames and ingestion.
+- `chardet` and `charset-normalizer` for encoding detection.
+- `openpyxl` and `xlrd` for Excel support.
+- Pydantic for structured action schemas.
+- YData Profiling for local HTML reports.
+- Pytest for regression testing.
+- NumPy, scikit-learn, and Plotly for future analysis stages.
 
-- CSV and Excel ingestion.
-- Encoding, delimiter, and header detection.
-- Empty-data validation.
-- Duplicate-column detection and internal renaming.
-- Exported-index detection.
-- Duplicate-row detection.
-- Raw null, null-like, whitespace, empty-string, mixed-type, case, numeric, datetime, and Boolean profiling.
-- Grouped-number parsing.
-- Rule-based preprocessing planning.
-- Safe internal transformations.
-- Lossless conversion protection.
-- Post-processing structural validation.
-- Before-and-after summary.
-- Markdown report generation.
-- Processed CSV output.
+LangChain and an LLM provider are not yet connected. The privacy-safe evidence boundary is implemented first so that a future model integration receives aggregate evidence rather than raw data.
 
-### Not yet fully connected to the main pipeline
+## 23. Current Status
 
-- Full descriptive-statistics report.
-- Automatic visualization recommendations.
-- Evidence-based insight synthesis.
-- Complete API upload-to-report workflow.
-- Complete frontend dashboard workflow.
-- Final combined report with charts and insights.
+### Implemented
 
-Review-only behavior is intentional. Index removal, duplicate-row removal, outlier removal, imputation, currency conversion, percentage conversion, and free-text transformations should become explicit evidence-backed actions before being made automatic.
+- Multi-format ingestion and structured errors.
+- Raw header and structure handling.
+- Raw profiling and missingness reporting.
+- Semantic type classification and confidence.
+- Numeric, datetime, and Boolean parseability.
+- Safe conversions with rollback.
+- Categorical normalization.
+- Identifier/free-text preservation.
+- Unresolved and mixed-format review.
+- Duplicate and index review.
+- Outlier and skewness reporting.
+- Complete execution logging.
+- Raw snapshot verification.
+- Cleaned re-profiling.
+- Before/after summary.
+- Downstream handoff metadata.
+- Raw and cleaned YData HTML reports.
+- Detailed Markdown preprocessing report.
+- Privacy-safe aggregate evidence preparation for LangChain.
 
-## 19. Future End-to-End Flow
+### Not yet connected
+
+- LangChain model invocation.
+- Provider/API configuration and secret management.
+- LLM-generated overall narrative report.
+- Evidence-grounded hallucination checking.
+- Rule-based statistical profiling module in the main pipeline.
+- Rule-based visualization recommendation output in the main pipeline.
+- Final chart/report/dashboard delivery workflow.
+
+## 24. Recommended Next Stage
+
+The next implementation stage should add LangChain around the existing evidence boundary:
+
+1. Choose a model/provider or local model.
+2. Configure secrets outside source control.
+3. Convert the evidence dictionary to a validated JSON prompt input.
+4. Ask for structured report sections and visualization recommendations.
+5. Validate the model response against the `EDAReport` schema.
+6. Check every claim against the evidence dictionary.
+7. Reject unsupported claims.
+8. Keep the raw and cleaned datasets local.
 
 ```text
-Upload dataset
-    |
-    v
-Ingest and validate
-    |
-    v
-Profile raw data
-    |
-    v
-Generate preprocessing plan
-    |
-    v
-Execute safe internal actions
-    |
-    v
-Validate and summarize changes
-    |
-    v
-Generate descriptive statistics
-    |
-    v
-Recommend visualizations
-    |
-    v
-Generate evidence-based insights
-    |
-    v
-Present final report and dashboard
+Local ingestion and preprocessing
+        |
+        v
+Local raw/cleaned profiles
+        |
+        v
+Privacy-safe aggregate evidence
+        |
+        v
+LangChain structured generation
+        |
+        v
+Evidence validation
+        |
+        v
+Final report and visualization recommendations
 ```
+
+## 25. Remaining Implementation Roadmap
+
+The preprocessing and privacy-safe evidence stages are implemented. The following work remains before EDA-Guider can generate a complete statistics, visualization, and LLM-written insight report.
+
+### 25.1 Stage A - Complete local statistical profiling
+
+**Current status:** Not connected. `backend/app/statistics/statistical_profiler.py` is currently empty, although statistical Pydantic schemas already exist in `backend/app/schemas/statistics.py`.
+
+**Implementation steps:**
+
+1. Accept the cleaned DataFrame and `downstream_handoff` metadata.
+2. Use only eligible columns from the handoff.
+3. Exclude identifiers, free text, unresolved columns, and review-excluded columns.
+4. Compute numeric statistics:
+        - Count
+        - Missing count and percentage
+        - Mean, median, standard deviation
+        - Minimum and maximum
+        - Quartiles
+        - Skewness and kurtosis
+        - IQR bounds
+        - Outlier count and percentage
+5. Compute categorical statistics:
+        - Count
+        - Unique count
+        - Most frequent category
+        - Top-category frequencies and percentages
+6. Compute datetime statistics:
+        - Minimum date
+        - Maximum date
+        - Unique count
+        - Duration in days
+7. Compute Boolean statistics:
+        - True count and percentage
+        - False count and percentage
+8. Compute correlations only for eligible numeric columns.
+9. Return a validated `StatisticalProfile` object.
+10. Add tests for numeric, categorical, datetime, Boolean, missing, excluded, and constant columns.
+
+**Important rule:** statistics must be calculated locally. The LLM should receive the aggregate statistical result, not the DataFrame.
+
+### 25.2 Stage B - Implement deterministic visualization recommendations
+
+**Current status:** The repository contains visualization modules and schemas, but the complete recommendation flow is not connected to the active preprocessing pipeline. Plot rendering is also only a stub in `backend/app/visualization/plotly_renderer.py` if that module is used.
+
+**Implementation steps:**
+
+1. Accept `StatisticalProfile` and the downstream handoff.
+2. Recommend charts from deterministic rules, for example:
+        - Numeric distribution: histogram
+        - Numeric outlier review: box plot
+        - Skewed numeric column: histogram with log-scale suggestion
+        - Two numeric columns with meaningful correlation: scatter plot
+        - Categorical column: bar chart
+        - Datetime column: time-series line chart
+        - Boolean column: count bar chart
+        - Numeric by category: grouped bar or box plot
+3. Never recommend charts using excluded columns.
+4. Include chart type, columns, title, reason, and supporting evidence IDs.
+5. Validate that every recommended column exists and is eligible.
+6. Add tests for each chart rule and excluded-column behavior.
+
+**Important rule:** chart selection should remain deterministic and rule-based. LangChain may explain a recommendation, but it should not invent chart specifications.
+
+### 25.3 Stage C - Build a stable evidence package
+
+**Current status:** Partially implemented. `build_llm_evidence_input()` in `backend/app/agent/agent.py` already removes raw samples, outlier values, DataFrames, and YData HTML.
+
+**Implementation steps:**
+
+1. Add the local `StatisticalProfile` to the evidence package.
+2. Add deterministic visualization recommendations.
+3. Assign stable evidence IDs to every statistic, warning, decision, and recommendation.
+4. Store the source field, column, metric, and value for each evidence item.
+5. Remove direct identifiers and sensitive column names when required by the privacy policy.
+6. Validate that no DataFrame, HTML, sample, row value, or outlier value enters the final payload.
+7. Serialize the package as validated JSON.
+8. Add a privacy test that scans serialized JSON for prohibited fields and values.
+
+The package should have this conceptual structure:
+
+```text
+dataset_metadata
+ingestion_evidence
+structure_evidence
+profiling_evidence
+preprocessing_evidence
+statistical_evidence
+visualization_evidence
+validation_evidence
+privacy_metadata
+```
+
+### 25.4 Stage D - Connect LangChain
+
+**Current status:** Not implemented. The current `Agent` class is a placeholder and does not call a model.
+
+**Implementation steps:**
+
+1. Choose the LLM provider or local model.
+2. Add LangChain and the provider package to `backend/requirements.txt`.
+3. Configure the API key or local model outside source control.
+4. Add environment-variable validation and a clear missing-configuration error.
+5. Define a prompt that explains:
+        - The input is aggregate evidence only.
+        - Raw data was not provided.
+        - Every claim must reference supplied evidence IDs.
+        - Unsupported claims must be omitted or marked uncertain.
+6. Use structured output matching `EDAReport` in `backend/app/schemas/report.py`.
+7. Send only the validated evidence JSON to LangChain.
+8. Parse and validate the model response with Pydantic.
+9. Reject malformed output and retry only under a bounded policy.
+10. Record model name, prompt version, evidence version, and response validation status.
+
+LangChain should explain local facts. It should not calculate unknown statistics, inspect raw files, or receive the original DataFrame.
+
+### 25.5 Stage E - Add evidence and hallucination validation
+
+**Current status:** Not implemented.
+
+**Implementation steps:**
+
+1. Require each generated insight to include evidence IDs.
+2. Check that every evidence ID exists in the local evidence package.
+3. Check that mentioned columns exist in the profile.
+4. Check that mentioned values and percentages match computed values within an allowed rounding tolerance.
+5. Reject claims that have no supporting evidence.
+6. Mark unsupported or uncertain statements instead of silently accepting them.
+7. Set `hallucination_checked=True` only after validation succeeds.
+8. Store rejected claims in the audit trail.
+
+### 25.6 Stage F - Assemble the final report
+
+**Current status:** The preprocessing Markdown report is implemented. The final statistics/insights report is not assembled.
+
+**Implementation steps:**
+
+1. Combine ingestion details, preprocessing findings, statistics, charts, and validated LLM insights.
+2. Populate `EDAReport` with:
+        - Dataset name
+        - Overall summary
+        - Evidence-backed insights
+        - Visualization recommendations
+        - Preprocessing summary
+        - Statistics summary
+        - Hallucination-check status
+3. Preserve raw and cleaned YData report links as local artifacts.
+4. Add Markdown and JSON export.
+5. Add an optional HTML/PDF presentation layer after the content is validated.
+
+### 25.7 Stage G - Connect API and frontend
+
+**Current status:** The frontend exists, but the upload-to-final-report workflow is not fully connected. The API analysis endpoint is incomplete.
+
+**Implementation steps:**
+
+1. Accept an uploaded file through the API instead of accepting an unvalidated path only.
+2. Store the upload in a controlled temporary location.
+3. Run the local pipeline.
+4. Return report metadata and local artifact references without returning raw data.
+5. Add a separate endpoint for validated final report generation.
+6. Stream progress states for ingestion, profiling, preprocessing, statistics, visualization, and LLM reporting.
+7. Display review-required actions before any user-approved destructive operation.
+8. Keep API responses free of raw samples and DataFrames.
+
+### 25.8 Stage H - Security and production hardening
+
+Before external LLM use, implement:
+
+- Secret management through environment variables or a secret manager.
+- No API keys in source control.
+- Request and response size limits.
+- File-size and row-count limits.
+- Temporary-file cleanup.
+- Prompt-injection handling for text fields.
+- PII and sensitive-column detection.
+- Column-name and report-content redaction policy.
+- Model timeout and retry limits.
+- Audit logging without raw values.
+- Explicit user consent before external transmission.
+
+## 26. Recommended Implementation Order
+
+The safest implementation order is:
+
+```text
+1. Complete local statistical profiler
+2. Add deterministic visualization recommender
+3. Extend privacy-safe evidence package
+4. Add evidence IDs and validation
+5. Connect LangChain with structured output
+6. Add hallucination/evidence checks
+7. Assemble final report
+8. Connect API and frontend
+9. Add production security controls
+```
+
+Each stage should be implemented with focused tests before the next stage is started. The raw dataset should remain local throughout all stages unless the user explicitly enables an approved external data-sharing policy.

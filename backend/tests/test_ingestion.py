@@ -86,6 +86,28 @@ def test_raw_profile_reports_metrics_warnings_and_does_not_mutate():
     assert raw.equals(original)
 
 
+def test_raw_profile_rolls_up_empty_whitespace_and_null_like_values():
+    raw = pd.DataFrame(
+        {
+            "notes": ["", "  ", "NA", "ok"],
+            "other": [None, "missing", "n/a", "fine"],
+        }
+    )
+    original = raw.copy(deep=True)
+
+    report = profile_raw_dataframe(raw)
+    summary = report["null_summary"]
+
+    assert summary["empty_string_count"] == 2
+    assert summary["whitespace_only_count"] == 1
+    assert summary["null_like_breakdown"]["na"] == 1
+    assert summary["null_like_breakdown"]["missing"] == 1
+    assert summary["null_like_breakdown"]["n/a"] == 1
+    assert summary["columns_with_empty_strings"] == ["notes"]
+    assert summary["columns_with_whitespace_only_values"] == ["notes"]
+    assert raw.equals(original)
+
+
 def test_preprocessing_plan_uses_raw_profile_evidence():
     raw = pd.DataFrame(
         {
@@ -105,8 +127,8 @@ def test_preprocessing_plan_uses_raw_profile_evidence():
     actions = {(action.action, action.columns[0]) for action in plan.actions}
     assert ("preserve_identifier", "customer_id") in actions
     assert ("strip_whitespace", "notes") in actions
-    assert ("replace_null_like", "notes") in actions
-    assert ("replace_empty_strings", "notes") in actions
+    assert ("replace_null_like", "notes") not in actions
+    assert ("replace_empty_strings", "notes") not in actions
     assert ("convert_to_boolean", "active") in actions
     assert all(0 <= action.confidence <= 1 for action in plan.actions)
 
@@ -128,3 +150,127 @@ def test_exported_index_column_is_reported_for_review():
     assert df is not None
     assert report["structural"]["index_like_columns"] == [""]
     assert any("Index-like columns" in warning for warning in report["structural"]["warnings"])
+
+
+def test_zero_byte_file_is_rejected_before_parsing():
+    file_input = BytesIO(b"")
+    file_input.name = "empty.csv"
+
+    df, report = load_file(file_input)
+
+    assert df is None
+    assert report["file_size_bytes"] == 0
+    assert "zero bytes" in report["errors"][0]["message"]
+
+
+def test_tsv_uses_tab_delimiter():
+    file_input = BytesIO(b"name\tamount\nA\t10\nB\t20\n")
+    file_input.name = "sample.tsv"
+
+    df, report = load_file(file_input)
+
+    assert report["status"] == "success"
+    assert report["delimiter"] == "\t"
+    assert df.to_dict("records") == [
+        {"name": "A", "amount": 10},
+        {"name": "B", "amount": 20},
+    ]
+
+
+def test_profile_reports_outliers_skewness_and_semantic_confidence():
+    report = profile_raw_dataframe(
+        pd.DataFrame({"amount": [1, 2, 3, 100], "status": ["yes", "no", "yes", "no"]})
+    )
+
+    amount = report["columns"][0]
+    assert amount["semantic_type"] == "numeric"
+    assert amount["classification_confidence"] == 1.0
+    assert amount["outlier_count"] == 1
+    assert amount["skewness"] > 1
+
+
+def test_parseability_metrics_drive_one_semantic_conversion_type():
+    raw = pd.DataFrame(
+        {
+            "amount": ["10", "20", "30", "40"],
+            "date": ["2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01"],
+            "active": ["yes", "no", "true", "false"],
+        }
+    )
+    report = profile_raw_dataframe(raw)
+    profiles = {column["name"]: column for column in report["columns"]}
+
+    assert profiles["amount"]["numeric_like_percentage"] == 100.0
+    assert profiles["date"]["datetime_like_percentage"] == 100.0
+    assert profiles["active"]["boolean_like_percentage"] == 100.0
+
+    from app.preprocessing.raw_rule_engine import generate_preprocessing_plan_from_raw_profile
+
+    plan = generate_preprocessing_plan_from_raw_profile(raw, report)
+    conversions = {
+        action.columns[0]: action.action
+        for action in plan.actions
+        if action.action.startswith("convert_to_")
+    }
+    assert conversions == {
+        "amount": "convert_to_numeric",
+        "date": "convert_to_datetime",
+        "active": "convert_to_boolean",
+    }
+
+
+def test_semantic_classifier_covers_categorical_identifier_text_and_unresolved():
+    raw = pd.DataFrame(
+        {
+            "category": ["A", "B"] * 5,
+            "customer_id": [f"C{index:03d}" for index in range(10)],
+            "description": [
+                "short", "a longer note", "third text", "another description",
+                "fifth value", "sixth longer value", "seventh", "eighth note",
+                "ninth description", "tenth text",
+            ],
+            "misc": ["aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh", "ii", "jj"],
+        }
+    )
+
+    report = profile_raw_dataframe(raw)
+    profiles = {column["name"]: column for column in report["columns"]}
+
+    assert profiles["category"]["semantic_type"] == "categorical"
+    assert profiles["customer_id"]["semantic_type"] == "identifier"
+    assert profiles["description"]["semantic_type"] == "free_text"
+    assert profiles["misc"]["semantic_type"] == "unresolved"
+    assert all(0.0 <= profile["classification_confidence"] <= 1.0 for profile in profiles.values())
+
+    from app.preprocessing.raw_rule_engine import generate_preprocessing_plan_from_raw_profile
+
+    plan = generate_preprocessing_plan_from_raw_profile(raw, report)
+    actions = {(action.action, action.columns[0]) for action in plan.actions}
+    assert ("preserve_identifier", "customer_id") in actions
+    assert ("preserve_free_text", "description") in actions
+    assert ("review_semantic_type", "misc") in actions
+
+
+def test_mixed_date_and_unit_formats_are_flagged_for_review():
+    raw = pd.DataFrame(
+        {
+            "event_date": ["2025-01-01", "01/02/2025", "2025-03-01"],
+            "weight": ["10 kg", "20 lbs", "30 kg"],
+        }
+    )
+
+    report = profile_raw_dataframe(raw)
+    profiles = {column["name"]: column for column in report["columns"]}
+
+    assert profiles["event_date"]["mixed_format_warning"] is True
+    assert profiles["weight"]["mixed_format_warning"] is True
+
+    from app.preprocessing.raw_rule_engine import generate_preprocessing_plan_from_raw_profile
+
+    plan = generate_preprocessing_plan_from_raw_profile(raw, report)
+    review_columns = {
+        action.columns[0]
+        for action in plan.actions
+        if action.action == "review_mixed_format"
+    }
+    assert review_columns == {"event_date", "weight"}

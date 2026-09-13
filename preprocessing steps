@@ -1,0 +1,49 @@
+Detect the file type from its extension (CSV, TSV, XLS, XLSX, XLSM) and reject unsupported types immediately with a clear error.
+Check the file isn't zero bytes before attempting to read it.
+Detect the file's text encoding from a sample of raw bytes; flag a warning if detection confidence is low.
+For CSV/TSV: detect the delimiter (comma, semicolon, tab, pipe); fall back to counting candidate delimiters in the first line if auto-detection fails; default to comma and flag "possible single-column file" if nothing is found.
+Detect whether the first row is a header; default to assuming a header exists if detection fails.
+For Excel: open the workbook, list all worksheets, use only the first one, and record which sheets were skipped.
+Read the raw header row as plain text (before any library touches it) to catch true duplicate column names before they get silently renamed.
+Load the file into a dataframe using the detected encoding/delimiter/header (or selected sheet); catch and report any load failure as a structured error instead of crashing.
+Assign generic names to any missing/blank/unnamed header cells.
+Clean up column names themselves — trim whitespace, normalize casing/spacing/special characters in the header row (not the data) — so column names are consistent and usable.
+Reconcile and report any duplicate column names, including how the loader itself renamed them.
+Check for a completely empty dataframe (zero columns) — stop and flag as fatal.
+Check for a dataframe with zero rows — stop and flag as fatal.
+Check for a very small row count (below a sensible minimum) — warn, don't stop.
+Check for a single-column dataset — warn that correlation/multi-column analysis won't be possible.
+Take a full snapshot of the raw, untouched data: per-column dtype, null count, unique count, and sample values. This copy is never modified again.
+Strip leading/trailing whitespace from every text/string column.
+Identify and separately count: actual nulls (NaN/None), empty strings, whitespace-only strings, and each null-like text marker ("na", "n/a", "null", "none", "missing", etc.) — per column, with a full breakdown, not just a total.
+Roll these up into a dataset-level null/missingness summary (total missing, percentage, which columns are affected) — report these values, don't auto-fill or auto-delete them.
+Detect and report exact duplicate rows across the whole dataset (count only, no removal yet).
+Detect and report duplicate columns (two columns with identical values throughout) — flagged for review, not removed.
+For every column, compute what percentage of non-null values would parse as numeric, as datetime, and as boolean (yes/no/true/false/y/n/1/0) — without committing to any conversion yet.
+For every column, compute the uniqueness ratio (unique values ÷ row count) — needed to flag possible identifier columns.
+For every column, compute the number of distinct values and, for string columns, the average string length — needed to distinguish categorical from free text.
+Using all of the above evidence together, classify each column into one semantic type: numeric, datetime, boolean, categorical, identifier, free text, or unresolved.
+Assign a confidence score to each column's classification, based on how strongly the evidence supports it.
+Flag dataset-level warnings at this point: any fully-null column, any constant column (only one distinct value), any column with unexpectedly high cardinality relative to row count.
+Check for mixed/inconsistent formats within a single column — e.g., dates in more than one format (DD/MM/YYYY vs MM/DD/YYYY), or numbers with mixed units (kg vs lbs, $ vs plain numbers) — and flag these for review rather than assuming one format.
+For columns classified numeric with high confidence: convert to numeric type; check the null percentage before and after; if the conversion would destroy too much data, reject it and keep the column as-is, marked "unresolved — high data loss."
+For columns classified datetime with high confidence: same approach as above — attempt conversion, measure data loss, accept or reject.
+For columns classified boolean with high confidence: map recognized true/false representations to actual booleans; log any value that doesn't match a known pattern instead of silently discarding it.
+For columns classified categorical: normalize text case (lower/upper/title) so equivalent categories aren't split apart (e.g. "usa" vs "USA").
+For columns classified identifier: leave untouched, exclude from all statistics and visualizations, and log as "preserved."
+For columns classified free text: leave untouched, exclude from numeric/statistical analysis, and log as "preserved."
+For columns that remain unresolved or below the confidence threshold: do not guess — mark explicitly as "needs review" and leave untouched.
+Guard every conversion step against fully empty or all-null columns — skip cleanly rather than process them as if they were normal.
+Run outlier detection on every numeric column (e.g. IQR method) and report the count/values found — this is reported for analysis awareness, not automatically removed or corrected.
+Compute skewness for every numeric column and flag columns that are heavily skewed, since this affects how the data should later be visualized or summarized.
+Log every single action taken — column(s) affected, action name, status (executed/skipped/rejected/needs review), reason, and any before/after measurement (like data-loss percentage).
+Separately distinguish and log "unsupported/unknown action" (a system issue) from "deliberately skipped" (a legitimate design decision).
+Confirm the original raw dataset object is completely unmodified, by comparing it against the very first snapshot taken in step 16.
+Re-profile the cleaned internal copy using the same profiling logic from steps 16–27.
+Build a column-by-column diff comparing the raw profile against the cleaned profile: dtype before/after, null percentage before/after, unique count before/after, and which actions were applied.
+Roll this up into a dataset-level before-and-after summary: total rows/columns before and after, number of columns changed, total number of logged actions.
+Re-attach the original null/missingness summary (from step 19) into this final summary, so it stays visible even though it wasn't necessarily altered.
+List every column still marked "unresolved" or "needs review," and exclude these from downstream statistics and visualizations.
+State explicitly, in the final output, how many columns were excluded and the specific reason for each.
+If the dataset is very large, apply row sampling only for the purpose of computing statistics/visualizations efficiently — this must not alter the actual cleaned dataset produced by this stage.
+Package everything — ingestion details, structural report, raw profile, null summary, preprocessing plan, execution log, before-and-after summary, outlier/skew notes — into one structured result, ready to hand off to statistics and visualization, without exposing the cleaned dataset directly as a deliverable.

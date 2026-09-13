@@ -75,3 +75,42 @@ def test_preprocessing_stage_returns_cleaned_data_and_final_artifact():
     assert cleaned["label"].tolist() == [True, False]
     assert summary["report_type"] == "preprocessing_summary"
     assert summary["execution_log"]
+
+
+def test_summary_lists_unresolved_and_needs_review_columns():
+    raw = pd.DataFrame({"misc": ["aa", "bb", "cc"], "amount": [1, 2, 100]})
+    raw_profile = profile_raw_dataframe(raw)
+    plan = generate_preprocessing_plan(raw, raw_profile)
+    cleaned, execution_log = execute_preprocessing_plan(raw, plan)
+
+    summary = build_preprocessing_summary_report(
+        raw_profile,
+        cleaned,
+        execution_log,
+    )
+
+    assert "misc" in summary["unresolved_columns"]
+    assert "misc" in summary["needs_review_columns"]
+    assert summary["summary"]["unresolved_column_count"] >= 1
+    assert summary["summary"]["needs_review_column_count"] >= 1
+
+
+def test_summary_builds_downstream_handoff_with_exclusions_and_sampling_metadata():
+    raw = pd.DataFrame(
+        {
+            "customer_id": ["C001", "C002", "C003"],
+            "notes": ["short note", "longer note", "third note"],
+            "amount": [1, 2, 3],
+        }
+    )
+    raw_profile = profile_raw_dataframe(raw)
+    plan = generate_preprocessing_plan(raw, raw_profile)
+    cleaned, execution_log = execute_preprocessing_plan(raw, plan)
+
+    summary = build_preprocessing_summary_report(raw_profile, cleaned, execution_log)
+    handoff = summary["downstream_handoff"]
+
+    assert "customer_id" not in handoff["eligible_columns"]
+    assert "notes" not in handoff["eligible_columns"]
+    assert handoff["sampling"]["applied"] is False
+    assert handoff["sampling"]["cleaned_dataset_changed"] is False

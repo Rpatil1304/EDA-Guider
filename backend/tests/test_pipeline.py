@@ -9,6 +9,8 @@ from app.reporting import generate_eda_guide_report
 _REQUIRED_KEYS = {
     "status",
     "ingestion_report",
+    "raw_ydata_profile_report",
+    "cleaned_ydata_profile_report",
     "structural_report",
     "raw_profile_report",
     "preprocessing_plan",
@@ -40,9 +42,11 @@ def test_run_preprocessing_pipeline_returns_all_stage_outputs():
     assert result["preprocessing_summary_report"]["report_type"] == "preprocessing_summary"
     assert isinstance(result["cleaned_dataframe"], pd.DataFrame)
     assert result["cleaned_dataframe"]["active"].tolist() == [True, False]
+    assert result["preprocessing_summary_report"]["raw_snapshot_unchanged"] is True
+    assert result["preprocessing_summary_report"]["summary"]["action_status_counts"]
 
 
-def test_pipeline_reports_and_replaces_null_like_values():
+def test_pipeline_reports_but_preserves_null_like_values():
     uploaded = BytesIO(
         b"name,notes\n"
         b"A,NA\n"
@@ -59,7 +63,7 @@ def test_pipeline_reports_and_replaces_null_like_values():
     assert null_summary["null_like_count"] == 2
     assert notes_profile["null_like_breakdown"]["na"] == 1
     assert notes_profile["null_like_breakdown"][""] == 1
-    assert result["cleaned_dataframe"]["notes"].isna().tolist() == [True, True, False]
+    assert result["cleaned_dataframe"]["notes"].tolist() == ["NA", "", "ok"]
 
 
 def test_pipeline_converts_grouped_numeric_values_without_data_loss():
@@ -73,6 +77,25 @@ def test_pipeline_converts_grouped_numeric_values_without_data_loss():
     assert result["status"] == "success"
     assert result["cleaned_dataframe"]["population_per_sq_km"].tolist() == [106.3, 1610.0], result
     assert result["cleaned_dataframe"]["population_per_sq_km"].notna().all()
+
+
+def test_identical_value_columns_are_retained_and_marked_for_review():
+    uploaded = BytesIO(
+        b"first,second,value\nA,A,1\nB,B,2\n"
+    )
+    uploaded.name = "duplicate_values.csv"
+
+    result = run_preprocessing_pipeline(uploaded)
+
+    assert result["status"] == "success"
+    assert result["structural_report"]["duplicate_value_columns"] == [["first", "second"]]
+    review_log = [
+        entry for entry in result["execution_log"]
+        if entry["action"] == "review_duplicate_column"
+    ]
+    assert review_log
+    assert all(entry["status"] == "needs_review" for entry in review_log)
+    assert result["cleaned_dataframe"].columns.tolist() == ["first", "second", "value"]
 
 
 def test_run_preprocessing_pipeline_stops_with_structured_ingestion_error():
@@ -102,3 +125,7 @@ def test_eda_guide_report_contains_completed_stages_and_next_steps(tmp_path):
     assert "## Part 6 - Before-and-after summary" in report
     assert "## Part 7 - Next EDA steps" in report
     assert "Visualization recommendations" in report
+    assert "Semantic type" in report
+    assert "Action status counts" in report
+    assert "Raw snapshot unchanged" in report
+    assert "Downstream handoff" in report
