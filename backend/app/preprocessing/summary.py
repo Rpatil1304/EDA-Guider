@@ -120,31 +120,21 @@ def build_preprocessing_summary_report(
         or summary["actions"]
     ]
     excluded_columns = []
+
     for summary in column_summaries:
-        actions = summary["actions"]
         after_profile = summary.get("after") or {}
-        reasons = []
-        if after_profile.get("semantic_type") in {
-            "identifier", "free_text", "unresolved"
-        }:
-            reasons.append(
-                f"semantic type is {after_profile['semantic_type']}"
+        semantic_type = after_profile.get("semantic_type")
+
+        if semantic_type in {"identifier", "free_text", "unresolved"}:
+            excluded_columns.append(
+                {
+                    "column": summary["column_after"] or summary["column_before"],
+                    "reasons": [
+                        f"semantic type is {semantic_type}"
+                    ],
+                }
             )
-        reasons.extend(
-            entry["reason"]
-            for entry in actions
-            if entry.get("status") in {"needs_review", "unsupported"}
-            or (
-                entry.get("action") in {"preserve_identifier", "preserve_free_text"}
-                and after_profile.get("semantic_type")
-                in {"identifier", "free_text", "unresolved"}
-            )
-        )
-        if reasons:
-            excluded_columns.append({
-                "column": summary["column_after"] or summary["column_before"],
-                "reasons": list(dict.fromkeys(reasons)),
-            })
+
     action_status_counts = dict(
         Counter(entry.get("status", "unknown") for entry in execution_log)
     )

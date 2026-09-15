@@ -104,20 +104,26 @@ def generate_preprocessing_plan_from_raw_profile(
                 f"{datetime_score:.1f}% of non-null values parse as datetimes while the raw dtype is string-like.",
                 {"datetime_like_percentage": datetime_score},
             )
-        if boolean_score >= 80 and is_string_like and semantic_type == "boolean":
+        if boolean_score >= 70 and is_string_like and semantic_type == "boolean":
             _add_action(
                 actions, column, "convert_to_boolean", boolean_score,
                 f"{boolean_score:.1f}% of non-null values match boolean representations such as yes/no or true/false.",
                 {"boolean_like_percentage": boolean_score},
             )
-        if profile.get("is_categorical"):
+        if profile.get("is_categorical") and semantic_type in {"categorical", "free_text"}:
             _add_action(
-                actions, column, "classify_as_categorical", (1.0 - unique_ratio) * 100,
+                actions,
+                column,
+                "classify_as_categorical",
+                (1.0 - unique_ratio) * 100,
                 f"Only {profile.get('unique_count', 0)} unique values occur across {raw_profile['row_count']} rows, indicating low cardinality.",
             )
-        if profile.get("is_free_text"):
+        if profile.get("is_free_text") and semantic_type == "free_text":
             _add_action(
-                actions, column, "preserve_free_text", unique_ratio * 100,
+                actions,
+                column,
+                "preserve_free_text",
+                unique_ratio * 100,
                 "The column has high cardinality and variable-length string values, so it is likely free text.",
             )
         if profile.get("has_case_variations") and profile.get("is_categorical"):

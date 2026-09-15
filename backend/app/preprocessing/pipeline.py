@@ -12,6 +12,7 @@ from app.ingestion.loader import load_file
 from app.preprocessing.preprocessor import execute_preprocessing_plan
 from app.preprocessing.summary import build_preprocessing_summary_report
 from app.schemas.preprocessing import PreprocessingPlan
+from app.statistics.statistical_profiler import build_statistical_profile
 
 
 def _initial_result() -> dict[str, Any]:
@@ -25,6 +26,7 @@ def _initial_result() -> dict[str, Any]:
         "preprocessing_plan": None,
         "execution_log": None,
         "preprocessing_summary_report": None,
+        "statistical_profile": None,
         "cleaned_dataframe": None,
         "pipeline_error": None,
     }
@@ -188,6 +190,7 @@ def run_preprocessing_pipeline(
     except Exception as error:
         return _failure(result, "preprocessing_execution", error)
 
+   
     # Part 6: profile the cleaned data and build the final summary artifact.
     try:
         result["preprocessing_summary_report"] = build_preprocessing_summary_report(
@@ -198,6 +201,15 @@ def run_preprocessing_pipeline(
         result["preprocessing_summary_report"]["raw_snapshot_unchanged"] = source_unchanged
     except Exception as error:
         return _failure(result, "post_cleaning_summary", error)
+
+    # Part 7: calculate deterministic statistical evidence.
+    try:
+        result["statistical_profile"] = build_statistical_profile(
+            result["cleaned_dataframe"],
+            result["preprocessing_summary_report"],
+        )
+    except Exception as error:
+        return _failure(result, "statistical_profiling", error)
 
     result["status"] = "success"
     return result
