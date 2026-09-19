@@ -583,6 +583,109 @@ def main() -> None:
             "Statistical profiling was not generated."
         )
 
+    
+        # ------------------------------------------------------------------
+    # Part 8 - Visualization recommendations
+    # ------------------------------------------------------------------
+
+    visualization_recommendations = result.get(
+        "visualization_recommendations"
+    )
+
+    if visualization_recommendations is not None:
+
+        print_section(
+            "PART 8: VISUALIZATION RECOMMENDATIONS"
+        )
+
+        for recommendation in (
+            visualization_recommendations.recommendations
+        ):
+
+            print(
+                f"\nChart Type : "
+                f"{recommendation.chart_type}"
+                f"\nColumns    : "
+                f"{recommendation.columns}"
+                f"\nReason     : "
+                f"{recommendation.reason}"
+                f"\nConfidence : "
+                f"{recommendation.confidence}"
+                f"\nPriority   : "
+                f"{recommendation.priority}"
+                f"\nRule ID    : "
+                f"{recommendation.rule_id}"
+            )
+
+    # ------------------------------------------------------------------
+    # Part 9 - Visualization evidence
+    # ------------------------------------------------------------------
+
+    visualization_evidence = result.get(
+        "visualization_evidence"
+    )
+
+    if visualization_evidence is not None:
+
+        print_section(
+            "PART 9: VISUALIZATION EVIDENCE"
+        )
+
+        for evidence in visualization_evidence.evidence:
+
+            print(
+                f"\nChart Type : "
+                f"{evidence.chart_type}"
+                f"\nColumns    : "
+                f"{evidence.columns}"
+                f"\nRule ID    : "
+                f"{evidence.rule_id}"
+                f"\nConfidence : "
+                f"{evidence.confidence}"
+                f"\nPriority   : "
+                f"{evidence.priority}"
+                f"\nRow Count  : "
+                f"{evidence.row_count}"
+                f"\nStatistics : "
+                f"{evidence.column_statistics}"
+            )
+        # ------------------------------------------------------------------
+    # Part 10 - Grouped visualization evidence
+    # ------------------------------------------------------------------
+
+    visualization_evidence_groups = result.get(
+        "visualization_evidence_groups"
+    )
+
+    if visualization_evidence_groups is not None:
+
+        print_section(
+            "PART 10: GROUPED VISUALIZATION EVIDENCE"
+        )
+
+        for rule_id, evidence_items in (
+            visualization_evidence_groups.items()
+        ):
+
+            print(
+                f"\nRule ID : {rule_id}"
+            )
+
+            print(
+                f"Recommendation count : "
+                f"{len(evidence_items)}"
+            )
+
+            for item in evidence_items:
+
+                print(
+                    f"  Chart Type : "
+                    f"{item.get('chart_type')}"
+                    f"\n  Columns    : "
+                    f"{item.get('columns')}"
+                    f"\n  Confidence : "
+                    f"{item.get('confidence')}"
+                )
     # ------------------------------------------------------------------
     # Save processed CSV + Markdown report
     # ------------------------------------------------------------------
@@ -607,7 +710,8 @@ def main() -> None:
         )
 
         print(
-            f"Saved processed data to: {processed_path}"
+            f"Saved processed data to: "
+            f"{processed_path}"
         )
 
         print(
@@ -647,7 +751,8 @@ def main() -> None:
         )
 
         print(
-            f"Saved step-by-step EDA report to: {report_path}"
+            f"Saved step-by-step EDA report to: "
+            f"{report_path}"
         )
 
 
