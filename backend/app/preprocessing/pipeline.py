@@ -1,4 +1,4 @@
-"""Top-level orchestrator for the ingestion through preprocessing stage."""
+"""Top-level orchestrator for the ingestion through reporting stage."""
 
 from __future__ import annotations
 
@@ -17,39 +17,82 @@ from app.statistics.statistical_profiler import build_statistical_profile
 from app.visualization.recommender import (
     generate_visualization_recommendations,
 )
+
 from app.visualization.evidence import (
     build_visualization_evidence,
 )
+
 from app.visualization.evidence_grouper import (
     group_visualization_evidence,
 )
-from app.langchain.schemas import (
-    LLMVisualizationRecommendation,
-    LLMVisualizationResponse,
-)
 
 from app.langchain.model import (
-    generate_llm_visualization_recommendations,
+    validate_visualization_recommendations,
+)
+
+from app.langchain.report_evidence import (
+    build_eda_report_evidence,
 )
 
 
 def _initial_result() -> dict[str, Any]:
     return {
         "status": "error",
+
+        # ============================================================
+        # Ingestion / profiling
+        # ============================================================
+
         "ingestion_report": None,
         "raw_ydata_profile_report": None,
         "cleaned_ydata_profile_report": None,
         "structural_report": None,
         "raw_profile_report": None,
+
+        # ============================================================
+        # Preprocessing
+        # ============================================================
+
         "preprocessing_plan": None,
         "execution_log": None,
         "preprocessing_summary_report": None,
+
+        # ============================================================
+        # Statistical analysis
+        # ============================================================
+
         "statistical_profile": None,
+
+        # ============================================================
+        # Visualization
+        # ============================================================
+
         "visualization_recommendations": None,
         "visualization_evidence": None,
         "visualization_evidence_groups": None,
-        "llm_visualization_recommendations": None,
+
+        # ============================================================
+        # LLM visualization validation
+        # ============================================================
+
+        "llm_visualization_validation": None,
+
+        # ============================================================
+        # Final report evidence
+        # ============================================================
+
+        "eda_report_evidence": None,
+
+        # ============================================================
+        # Internal data
+        # ============================================================
+
         "cleaned_dataframe": None,
+
+        # ============================================================
+        # Error information
+        # ============================================================
+
         "pipeline_error": None,
     }
 
@@ -64,8 +107,77 @@ def _failure(
         "type": type(error).__name__,
         "message": str(error),
     }
+
     return result
 
+def _build_preprocessing_report_information(
+    preprocessing_summary_report: dict[str, Any],
+) -> dict[str, Any]:
+    """Prepare preprocessing information for final report evidence."""
+
+    summary = preprocessing_summary_report.get(
+        "summary",
+        {},
+    )
+
+    execution_log = preprocessing_summary_report.get(
+        "execution_log",
+        [],
+    )
+
+    steps = []
+
+    for entry in execution_log:
+        status = entry.get("status", "unknown")
+        action = (
+            entry.get("action")
+            or entry.get("operation")
+            or entry.get("rule")
+            or entry.get("type")
+        )
+
+        columns = entry.get(
+            "columns",
+            [],
+        )
+
+        if action:
+            if columns:
+                steps.append(
+                    f"{action} on columns: "
+                    f"{', '.join(map(str, columns))} "
+                    f"(status: {status})"
+                )
+            else:
+                steps.append(
+                    f"{action} "
+                    f"(status: {status})"
+                )
+        else:
+            steps.append(
+                f"Preprocessing action "
+                f"(status: {status})"
+            )
+
+    return {
+        "steps": steps,
+        "rows_before": summary.get(
+            "raw_row_count",
+            0,
+        ),
+        "rows_after": summary.get(
+            "cleaned_row_count",
+            0,
+        ),
+        "columns_before": summary.get(
+            "raw_column_count",
+            0,
+        ),
+        "columns_after": summary.get(
+            "cleaned_column_count",
+            0,
+        ),
+    }
 
 def _generate_ydata_profile(
     dataframe: pd.DataFrame,
@@ -89,13 +201,23 @@ def _generate_ydata_profile(
     except ImportError as error:
         return {
             "status": "unavailable",
-            "output_path": str(output_path) if output_path else None,
-            "error": f"ydata-profiling is not installed: {error}",
+            "output_path": (
+                str(output_path)
+                if output_path
+                else None
+            ),
+            "error": (
+                "ydata-profiling is not installed: "
+                f"{error}"
+            ),
         }
 
     profile = ProfileReport(
         dataframe.copy(deep=True),
-        title=f"EDA-Guider {dataset_label.title()} Data Profile",
+        title=(
+            f"EDA-Guider "
+            f"{dataset_label.title()} Data Profile"
+        ),
         minimal=True,
     )
 
@@ -121,20 +243,38 @@ def run_preprocessing_pipeline(
     data_loss_threshold: float = 0.30,
     case_strategy: str = "lower",
 ) -> dict[str, Any]:
-    """Run Parts 1 through 10 and return one structured pipeline result.
+    """
+    Run the complete EDA-Guider pipeline.
 
-    This function never raises ordinary pipeline failures to its caller. A
-    failed stage stops subsequent processing and leaves all reports created by
-    earlier stages available in the returned object. ``cleaned_dataframe`` is
-    included for the next internal pipeline stage and should not be exposed
-    directly by an API response.
+    The pipeline performs:
+
+    1. Data ingestion
+    2. Structural validation
+    3. Raw profiling
+    4. Preprocessing planning
+    5. Preprocessing execution
+    6. Preprocessing summary
+    7. Statistical profiling
+    8. Rule-based visualization recommendation
+    9. Visualization evidence generation
+    10. Visualization evidence grouping
+    11. LLM visualization validation
+    12. Final EDA report evidence construction
+
+    The original dataset is never modified.
+
+    The cleaned dataframe is retained internally for downstream
+    deterministic analysis and should not be exposed directly
+    through an API response.
     """
 
     result = _initial_result()
 
     # ================================================================
-    # Parts 1-4: ingestion, structural validation, raw profile, plan.
+    # Parts 1-4:
+    # Ingestion, structural validation, raw profile, preprocessing plan
     # ================================================================
+
     try:
         dataframe, ingestion_report = load_file(
             file_path_or_buffer
@@ -148,14 +288,17 @@ def run_preprocessing_pipeline(
         )
 
     result["ingestion_report"] = ingestion_report
-    result["structural_report"] = ingestion_report.get(
-        "structural"
+
+    result["structural_report"] = (
+        ingestion_report.get("structural")
     )
-    result["raw_profile_report"] = ingestion_report.get(
-        "raw_profile"
+
+    result["raw_profile_report"] = (
+        ingestion_report.get("raw_profile")
     )
-    result["preprocessing_plan"] = ingestion_report.get(
-        "preprocessing_plan"
+
+    result["preprocessing_plan"] = (
+        ingestion_report.get("preprocessing_plan")
     )
 
     raw_snapshot = (
@@ -164,7 +307,10 @@ def run_preprocessing_pipeline(
         else None
     )
 
-    if dataframe is None or ingestion_report.get("status") != "success":
+    if (
+        dataframe is None
+        or ingestion_report.get("status") != "success"
+    ):
         error = ingestion_report.get("errors") or [
             {
                 "type": "IngestionError",
@@ -182,6 +328,7 @@ def run_preprocessing_pipeline(
     # ================================================================
     # Generate raw YData profile before preprocessing.
     # ================================================================
+
     try:
         result["raw_ydata_profile_report"] = (
             _generate_ydata_profile(
@@ -229,8 +376,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 5: execute preprocessing plan.
+    # Part 5:
+    # Execute preprocessing plan.
     # ================================================================
+
     try:
         plan = PreprocessingPlan.model_validate(
             result["preprocessing_plan"]
@@ -246,7 +395,10 @@ def run_preprocessing_pipeline(
         )
 
         result["execution_log"] = execution_log
-        result["cleaned_dataframe"] = cleaned_dataframe
+
+        result["cleaned_dataframe"] = (
+            cleaned_dataframe
+        )
 
         source_unchanged = (
             raw_snapshot is not None
@@ -291,8 +443,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 6: profile cleaned data and build final summary artifact.
+    # Part 6:
+    # Build preprocessing summary.
     # ================================================================
+
     try:
         result["preprocessing_summary_report"] = (
             build_preprocessing_summary_report(
@@ -314,8 +468,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 7: calculate deterministic statistical evidence.
+    # Part 7:
+    # Calculate deterministic statistical evidence.
     # ================================================================
+
     try:
         result["statistical_profile"] = (
             build_statistical_profile(
@@ -332,9 +488,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 8: generate deterministic visualization
-    # recommendations.
+    # Part 8:
+    # Generate deterministic visualization recommendations.
     # ================================================================
+
     try:
         result["visualization_recommendations"] = (
             generate_visualization_recommendations(
@@ -350,8 +507,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 9: build structured visualization evidence.
+    # Part 9:
+    # Build structured visualization evidence.
     # ================================================================
+
     try:
         result["visualization_evidence"] = (
             build_visualization_evidence(
@@ -368,8 +527,10 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
-    # Part 10: group visualization evidence.
+    # Part 10:
+    # Group visualization evidence.
     # ================================================================
+
     try:
         result["visualization_evidence_groups"] = (
             group_visualization_evidence(
@@ -385,8 +546,96 @@ def run_preprocessing_pipeline(
         )
 
     # ================================================================
+    # Part 11:
+    # LLM validates deterministic visualization recommendations.
+    # ================================================================
+
+    try:
+        statistical_profile_data = (
+            result["statistical_profile"].model_dump()
+        )
+
+        visualization_recommendation_data = (
+            result[
+                "visualization_recommendations"
+            ].model_dump().get(
+                "recommendations",
+                [],
+            )
+        )
+
+        result["llm_visualization_validation"] = (
+            validate_visualization_recommendations(
+                statistical_profile=(
+                    statistical_profile_data
+                ),
+                visualization_recommendations=(
+                    visualization_recommendation_data
+                ),
+            )
+        )
+
+    except Exception as error:
+        return _failure(
+            result,
+            "llm_visualization_validation",
+            error,
+        )
+
+    # ================================================================
+    # Part 12:
+    # Build final privacy-safe EDA report evidence.
+    # ================================================================
+
+    # ================================================================
+# Part 12:
+# Build final privacy-safe EDA report evidence.
+# ================================================================
+
+    try:
+        statistical_profile_data = (
+            result["statistical_profile"].model_dump()
+        )
+
+        validation_data = (
+            result[
+                "llm_visualization_validation"
+            ].model_dump()
+        )
+
+        preprocessing_information = (
+            _build_preprocessing_report_information(
+                result[
+                    "preprocessing_summary_report"
+                ]
+            )
+        )
+
+        result["eda_report_evidence"] = (
+            build_eda_report_evidence(
+                statistical_profile=(
+                    statistical_profile_data
+                ),
+                preprocessing_information=(
+                    preprocessing_information
+                ),
+                validation_response=(
+                    validation_data
+                ),
+            )
+        )
+
+    except Exception as error:
+        return _failure(
+            result,
+            "eda_report_evidence",
+            error,
+        )
+
+    # ================================================================
     # Pipeline completed successfully.
     # ================================================================
+
     result["status"] = "success"
 
     return result

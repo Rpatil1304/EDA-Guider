@@ -352,8 +352,8 @@ def main() -> None:
     # ------------------------------------------------------------------
 
     statistical_profile = result.get(
-    "statistical_profile"
-)
+        "statistical_profile"
+    )
 
     if statistical_profile is not None:
         statistical_profile = statistical_profile.model_dump()
@@ -583,8 +583,7 @@ def main() -> None:
             "Statistical profiling was not generated."
         )
 
-    
-        # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Part 8 - Visualization recommendations
     # ------------------------------------------------------------------
 
@@ -649,7 +648,7 @@ def main() -> None:
                 f"\nStatistics : "
                 f"{evidence.column_statistics}"
             )
-        # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Part 10 - Grouped visualization evidence
     # ------------------------------------------------------------------
 
@@ -686,6 +685,41 @@ def main() -> None:
                     f"\n  Confidence : "
                     f"{item.get('confidence')}"
                 )
+    # ------------------------------------------------------------------
+    # Part 11 - LLM visualization validation
+    # ------------------------------------------------------------------
+
+    llm_visualization_validation = result.get(
+        "llm_visualization_validation"
+    )
+
+    if llm_visualization_validation is not None:
+
+        print_section(
+            "PART 11: LLM VISUALIZATION VALIDATION"
+        )
+
+        print(
+            llm_visualization_validation.model_dump()
+        )
+
+    # ------------------------------------------------------------------
+    # Part 12 - Final EDA report evidence
+    # ------------------------------------------------------------------
+
+    eda_report_evidence = result.get(
+        "eda_report_evidence"
+    )
+
+    if eda_report_evidence is not None:
+
+        print_section(
+            "PART 12: FINAL EDA REPORT EVIDENCE"
+        )
+
+        print(
+            eda_report_evidence.model_dump()
+        )
     # ------------------------------------------------------------------
     # Save processed CSV + Markdown report
     # ------------------------------------------------------------------
