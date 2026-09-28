@@ -809,6 +809,18 @@ If missing values exist, clearly mention them.
 
 If there are no missing values, state that clearly.
 
+When conversion-quality information is supplied, distinguish between:
+
+- actual_nan_count_before: values that were already missing immediately
+  before the conversion
+- invalid_value_count_before_conversion: non-null values that were invalid
+  for the target conversion type and were converted to missing values
+
+Do NOT combine these two counts into one number.
+
+If invalid values were converted to missing values, mention this as an
+important data-quality issue when relevant.
+
 Do not list unnecessary metadata that does not help the user
 understand the dataset.
 
@@ -1493,6 +1505,63 @@ def prepare_final_report_input(
         {},
     )
 
+    # ------------------------------------------------------------
+    # Preprocessing information
+    # ------------------------------------------------------------
+
+    preprocessing_summary = pipeline_result.get(
+        "preprocessing_summary_report",
+        {},
+    )
+
+    # ------------------------------------------------------------
+    # Conversion quality information
+    # ------------------------------------------------------------
+    # Keep already-missing values separate from non-null values that
+    # were invalid for the target conversion type.
+    # These are aggregate counts only; raw records are never exposed.
+    # ------------------------------------------------------------
+
+    conversion_quality = {}
+
+    for entry in preprocessing_summary.get(
+        "execution_log",
+        [],
+    ):
+        action = entry.get("action")
+
+        if action not in {
+            "convert_to_numeric",
+            "convert_to_datetime",
+            "convert_to_boolean",
+        }:
+            continue
+
+        if entry.get("status") != "executed":
+            continue
+
+        conversion_type = action.replace(
+            "convert_to_",
+            "",
+        )
+
+        for column in entry.get("columns", []):
+            conversion_quality[column] = {
+                "conversion": conversion_type,
+                "actual_nan_count_before": entry.get(
+                    "actual_nan_count_before",
+                    0,
+                ),
+                "invalid_value_count_before_conversion": entry.get(
+                    "invalid_non_null_count",
+                    0,
+                ),
+            }
+
+    # ------------------------------------------------------------
+    # Raw dataset information
+    # ------------------------------------------------------------
+
     raw_dataset_information = {
         "row_count": raw_profile.get(
             "row_count",
@@ -1510,16 +1579,8 @@ def prepare_final_report_input(
             "null_summary",
             {},
         ),
+        "conversion_quality": conversion_quality,
     }
-
-    # ------------------------------------------------------------
-    # Preprocessing information
-    # ------------------------------------------------------------
-
-    preprocessing_summary = pipeline_result.get(
-        "preprocessing_summary_report",
-        {},
-    )
 
     preprocessing_information = {
         "summary": preprocessing_summary.get(

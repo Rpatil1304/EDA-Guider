@@ -602,8 +602,13 @@ def execute_preprocessing_plan(
                 log([column], action.action, "skipped", "Conversion confidence is below 0.80; manual review is required.", confidence=action.confidence)
                 continue
 
-            original = cleaned[column].copy(deep=True)
+            # Capture the missing-value count immediately before
+            # this conversion. Keep already-missing values separate
+            # from invalid non-null values.
+            actual_nan_count_before = int(cleaned[column].isna().sum())
+
             null_before = float(cleaned[column].isna().mean())
+
             if action.action == "convert_to_boolean":
                 converted = cleaned[column].map(
                     lambda value: pd.NA
@@ -620,18 +625,46 @@ def execute_preprocessing_plan(
                 if action.action == "convert_to_numeric":
                     converted = parse_numeric_series(cleaned[column])
                 else:
-                    converted = conversion_actions[action.action](cleaned[column], errors="coerce")
+                    converted = conversion_actions[action.action](
+                        cleaned[column],
+                        errors="coerce",
+                    )
+
             null_after = float(converted.isna().mean())
-            loss = null_after - null_before
+
+            # Count only non-null values that became missing because
+            # they were invalid for the target conversion type.
             invalid_non_null_count = int(
-                cleaned[column].notna().sum() - converted.notna().sum()
+                cleaned[column].notna().sum()
+                - converted.notna().sum()
             )
-            if invalid_non_null_count > 0 or loss > data_loss_threshold:
-                cleaned[column] = original
-                log([column], action.action, "rejected", "Conversion would lose non-null values; original values were restored for review.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), invalid_non_null_count=invalid_non_null_count, confidence=action.confidence)
-            else:
-                cleaned[column] = converted
-                log([column], action.action, "executed", "High-confidence lossless conversion applied.", null_percentage_before=round(null_before * 100, 4), null_percentage_after=round(null_after * 100, 4), data_loss=round(max(0, loss), 4), invalid_non_null_count=0, confidence=action.confidence)
+
+            # Invalid values are intentionally converted to missing.
+            # Valid values are preserved in their converted type.
+            # `cleaned` is a private deep copy, so the original
+            # uploaded DataFrame remains unchanged.
+            cleaned[column] = converted
+
+            log(
+                [column],
+                action.action,
+                "executed",
+                (
+                    "High-confidence conversion applied. "
+                    "Invalid non-null values were converted to missing values."
+                    if invalid_non_null_count > 0
+                    else "High-confidence conversion applied."
+                ),
+                actual_nan_count_before=actual_nan_count_before,
+                invalid_non_null_count=invalid_non_null_count,
+                null_percentage_before=round(null_before * 100, 4),
+                null_percentage_after=round(null_after * 100, 4),
+                data_loss=round(
+                    max(0, null_after - null_before),
+                    4,
+                ),
+                confidence=action.confidence,
+            )
 
     # 8. Record classification and normalize case only when explicitly planned.
     for action in actions:

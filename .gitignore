@@ -54,4 +54,4 @@ data/sample/*
 logs/
 
 .env
-backend\data\debug
+backend/data/debug
