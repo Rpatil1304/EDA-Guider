@@ -1,4 +1,6 @@
-"""Top-level orchestrator for the ingestion through reporting stage."""
+"""
+Top-level orchestrator for the ingestion through reporting stage.
+"""
 
 from __future__ import annotations
 
@@ -110,6 +112,7 @@ def _failure(
 
     return result
 
+
 def _build_preprocessing_report_information(
     preprocessing_summary_report: dict[str, Any],
 ) -> dict[str, Any]:
@@ -129,6 +132,7 @@ def _build_preprocessing_report_information(
 
     for entry in execution_log:
         status = entry.get("status", "unknown")
+
         action = (
             entry.get("action")
             or entry.get("operation")
@@ -178,6 +182,7 @@ def _build_preprocessing_report_information(
             0,
         ),
     }
+
 
 def _generate_ydata_profile(
     dataframe: pd.DataFrame,
@@ -586,11 +591,6 @@ def run_preprocessing_pipeline(
     # Part 12:
     # Build final privacy-safe EDA report evidence.
     # ================================================================
-
-    # ================================================================
-# Part 12:
-# Build final privacy-safe EDA report evidence.
-# ================================================================
 
     try:
         statistical_profile_data = (

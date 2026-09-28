@@ -1,0 +1,101 @@
+customer_id,age,salary,experience,city,status,is_active,join_date,quantity,profit,comments
+CUST-1001,59,45795,14,hyderabad,inactive,true,2025-01-04,11,19602.43,New account
+CUST-1002,31,142727,20,delhi,pending,1,2025-01-07,4,4000.24,Needs follow-up
+CUST-1003,44,92955,5,hyderabad,active,false,2025-01-10,2,4954.71,Needs follow-up
+CUST-1004,42,101932,11,delhi,inactive,false,2025-01-13,9,7635.11,Payment delayed
+CUST-1005,36,89150,14,,active,true,2025-01-16,14,5392.01,New account
+CUST-1006,57,33890,6,mumbai,active,true,2025-01-19,5,11537.23,Payment delayed
+CUST-1007,34,103969,8,bengaluru,active,false,2025-01-22,10,2892.97,Payment delayed
+CUST-1008,,140510,2,mumbai,active,false,2025-01-25,14,10080.98,No response
+CUST-1009,26,139109,9,kolkata,inactive,false,2025-01-28,4,5028.93,Payment delayed
+CUST-1010,54,67065,3,kolkata,pending,false,2025-01-31,14,18318.16,Regular customer
+CUST-1011,60,119812,15,n/a,inactive,true,2025-02-03,13,7148.05,Payment delayed
+CUST-1012,49,81214,,pune,active,false,2025-02-06,1,883.09,New account
+CUST-1013,37,63159,2,hyderabad,inactive,false,2025-02-09,3,19396.12,Regular customer
+CUST-1014,48,52662,8,pune,pending,1,2025-02-12,8,11511.54,New account
+CUST-1015,60,40965,2,kolkata,,0,2025-02-15,1,9881.71,New account
+CUST-1016,21,112948,13,kolkata,inactive,false,2025-02-18,7,1490.62,Payment delayed
+CUST-1017,33,"1,610",6,bengaluru,pending,1,2025-02-21,1,8201.72,Interested in upgrade
+CUST-1018,35,147930,3,delhi,pending,0,2025-02-24,13,2386.01,Payment delayed
+CUST-1019,22,139225,12,chennai,active,false,2025-02-27,14,16018.39,Payment delayed
+CUST-1020,40,78925,10,pune,pending,yes,2025-03-02,10,3491.15,Regular customer
+CUST-1021,21,96842,19,kolkata,pending,true,2025-03-05,13,21587.9,Regular customer
+CUST-1022,57,127504,18,kolkata,pending,0,2025-03-08,10,8771.57,Regular customer
+CUST-1023,32,82733,6,pune,inactive,true,2025-03-11,2,17950.63,Regular customer
+CUST-1024,22,133041,4,chennai,inactive,1,2025-03-14,1,16041.61,Payment delayed
+CUST-1025,46,134095,5,delhi,pending,true,2025-03-17,7,16967.32,No response
+CUST-1026,44,136308,19,delhi,null,true,2025-03-20,2,16021.48,Payment delayed
+CUST-1027,26,81663,2,bengaluru,pending,false,2025/03/27,4,8485.99,New account
+CUST-1028,39,41411,6,kolkata,inactive,true,2025-03-26,4,23542.82,New account
+CUST-1029,,103656,17,mumbai,pending,false,2025-03-29,7,13765.48,Needs follow-up
+CUST-1030,22,61616,15,hyderabad,pending,true,2025-04-01,14,22481.79,Regular customer
+CUST-1031,55,72642,15,chennai,active,false,2025-04-04,3,21479.95,
+CUST-1032,31,146336,7,bengaluru,pending,true,2025-04-07,4,22514.58,
+CUST-1033,45,112018,17,chennai,pending,no,2025-04-10,14,13943.98,
+CUST-1034,36,80108,8,pune,pending,1,2025-04-13,4,17948.39,Payment delayed
+CUST-1035,28,76214,2,bengaluru,,true,2025-04-16,1,8047.49,New account
+CUST-1036,42,49830,13,hyderabad,pending,0,2025-04-19,14,24338.76,New account
+CUST-1037,47,79377,20,kolkata,active,1,2025-04-22,14,16305.03,Payment delayed
+CUST-1038,39,86835,,bengaluru,active,0,2025-04-25,1,1568.29,Interested in upgrade
+CUST-1039,26,77202,8,pune,pending,1,2025-04-28,5,23243.8,New account
+CUST-1040,53,95726,20,delhi,inactive,true,2025-05-01,7,7077.63,Needs follow-up
+CUST-1041,51,"89,17,000",2,mumbai,pending,false,2025-05-04,8,2225.2,New account
+CUST-1042,22,75017,16,delhi,pending,1,2025-05-07,8,17576.89,Needs follow-up
+CUST-1043,46,134290,17,bengaluru,inactive,true,2025-05-10,9,15482.09,Payment delayed
+CUST-1044,40,32368,7,,active,true,2025-05-13,14,19996.92,Payment delayed
+CUST-1045,54,108657,18,chennai,inactive,0,2025-05-16,9,4298.52,Needs follow-up
+CUST-1046,42,NA,19,chennai,pending,false,2025-05-19,10,20653.71,Interested in upgrade
+CUST-1047,53,110135,20,hyderabad,active,0,2025-05-22,12,5787.62,Interested in upgrade
+CUST-1048,52,86179,14,bengaluru,inactive,false,27-Mar-2025,3,16117.03,Payment delayed
+CUST-1049,50,121794,16,bengaluru,inactive,false,2025-05-28,8,7135.39,Interested in upgrade
+CUST-1050,46,38308,8,mumbai,inactive,true,2025-05-31,12,250000.0,Needs follow-up
+CUST-1051,52,37805,15,hyderabad,active,1,2025-06-03,9,16674.84,Interested in upgrade
+CUST-1052,42,89638,2,delhi,inactive,0,2025-06-06,12,14367.91,Regular customer
+CUST-1053,49,91389,4,chennai,active,1,2025-06-09,1,8129.63,Payment delayed
+CUST-1054,,138761,15,pune,pending,0,2025-06-12,5,12100.06,Interested in upgrade
+CUST-1055,43,134185,9,mumbai,active,false,2025-06-15,6,16059.79,Needs follow-up
+CUST-1056,39,130793,0,bengaluru,inactive,true,2025-06-18,8,16637.99,Payment delayed
+CUST-1057,52,90890,19,delhi,active,true,2025-06-21,8,17090.62,Regular customer
+CUST-1058,57,133691,2,mumbai,active,true,2025-06-24,1,24049.17,Payment delayed
+CUST-1059,49,138940,11,delhi,inactive,true,2025-06-27,14,946.43,Regular customer
+CUST-1060,46,55351,9,delhi,active,false,2025-06-30,10,8845.3,Needs follow-up
+CUST-1061,31,30412,3,pune,active,false,2025-07-03,9,20185.28,None
+CUST-1062,29,65735,2,bengaluru,inactive,true,2025-07-06,1,18425.37,No response
+CUST-1063,52,75000,11,kolkata,active,true,2025-07-09,1,17156.2,Regular customer
+CUST-1064,50,141888,16,pune,pending,1,2025-07-12,14,12665.75,New account
+CUST-1065,39,77280,3,delhi,active,true,2025-07-15,12,23984.27,Payment delayed
+CUST-1066,34,81934,19,hyderabad,inactive,true,2025-07-18,3,12579.13,Payment delayed
+CUST-1067,45,127203,,pune,inactive,1,2025-07-21,4,23681.77,Needs follow-up
+CUST-1068,59,118461,4,delhi,pending,false,2025-07-24,3,22248.75,Payment delayed
+CUST-1069,29,53625,11,kolkata,pending,1,2025-07-27,1,2977.51,Needs follow-up
+CUST-1070,29,123105,1,chennai,pending,1,2025-07-30,5,13076.49,
+CUST-1071,21,113285,19,pune,inactive,false,2025-08-02,1,23707.59,Payment delayed
+CUST-1072,unknown,119339,18,kolkata,pending,false,2025-08-05,13,9760.7,Needs follow-up
+CUST-1073,39,124246,2,bengaluru,pending,false,2025-08-08,13,778.16,Payment delayed
+CUST-1074,48,87799,8,hyderabad,active,0,2025-08-11,7,18778.1,Regular customer
+CUST-1075,45,63591,0,mumbai,active,1,2025-08-14,6,11190.23,Interested in upgrade
+CUST-1076,41,50559,20,mumbai,active,true,2025-08-17,11,23018.34,New account
+CUST-1077,40,140008,17,kolkata,active,1,2025-08-20,9,5811.82,No response
+CUST-1078,23,unknown,10,chennai,active,false,2025-08-23,12,23988.21,Interested in upgrade
+CUST-1079,28,39337,3,bengaluru,inactive,false,2025-08-26,10,10012.58,Payment delayed
+CUST-1080,57,34835,16,bengaluru,inactive,false,2025-08-29,9,8083.43,Interested in upgrade
+CUST-1081,33,64349,2,delhi,inactive,true,2025-09-01,13,23543.03,Needs follow-up
+CUST-1082,30,114791,17,kolkata,active,0,2025-09-04,11,1607.86,Regular customer
+CUST-1083,38,38415,14,mumbai,active,0,invalid-date,1,9730.1,New account
+CUST-1084,47,116704,7,delhi,active,1,2025-09-10,1,11982.98,No response
+CUST-1085,48,48384,4,hyderabad,inactive,1,2025-09-13,5,24917.6,Interested in upgrade
+CUST-1086,30,62201,18,pune,pending,true,2025-09-16,1,6406.58,New account
+CUST-1087,33,87091,0,mumbai,active,false,2025-09-19,1,19046.48,Needs follow-up
+CUST-1088,54,91877,2,,active,0,2025-09-22,11,8040.54,Payment delayed
+CUST-1089,25,54285,16,hyderabad,pending,false,2025-09-25,7,19000.86,New account
+CUST-1090,59,111317,1,mumbai,pending,true,2025-09-28,6,15398.15,New account
+CUST-1091,54,not available,5,bengaluru,pending,false,2025-10-01,1,19699.5,New account
+CUST-1092,37,146868,3,mumbai,active,false,2025-10-04,10,23201.4,Payment delayed
+CUST-1093,44,132468,1,hyderabad,pending,true,2025-10-07,6,12569.14,New account
+CUST-1094,31,146594,14,kolkata,pending,0,2025-10-10,9,11772.92,Payment delayed
+CUST-1095,60,138215,2,mumbai,inactive,maybe,2025-10-13,3,13123.28,Needs follow-up
+CUST-1096,39,87108,4,hyderabad,pending,1,2025-10-16,2,7325.46,No response
+CUST-1097,21,134680,11,pune,pending,false,2025-10-19,10,300000.0,Interested in upgrade
+CUST-1098,47,53624,14,chennai,pending,1,2025-10-22,9,17350.73,Regular customer
+CUST-1099,46,94291,0,hyderabad,active,0,2025-10-25,8,18832.36,No response
+CUST-1100,46,58699,13,mumbai,pending,true,2025-10-28,8,18152.64,New account
