@@ -1,6 +1,6 @@
 # EDA-Guider
 
-**Agentic AI-driven Exploratory Data Analysis system** that acts as a generalized EDA decision-support tool for arbitrary tabular datasets (CSV/Excel).
+**AI-driven Exploratory Data Analysis system** that acts as a generalized EDA decision-support tool for arbitrary tabular datasets (CSV/Excel).
 
 EDA-Guider analyzes the structure and quality of an uploaded dataset, recommends dataset-specific preprocessing actions, performs safe preprocessing on an internal copy, computes statistical information, recommends useful visualizations, and generates a grounded final EDA report.
 
@@ -208,7 +208,7 @@ Supported recommendation types include:
 
 Each recommendation contains a rule ID, chart type, relevant columns, reason, confidence, and priority. The rule engine produces **candidates**, not the final visualization list.
 
-### 8. Model 1 — Visualization Selection
+### 8. Model 1 - Visualization Selection
 
 Model 1 receives structured, privacy-safe evidence containing:
 
@@ -222,7 +222,7 @@ Its responsibility is to select a small set of useful, complementary, and non-re
 
 It avoids redundant combinations such as multiple distribution charts for the same variable, bar and pie charts for the same category, excessive scatter plots, and multiple charts describing the same missingness pattern.
 
-### 9. Model 2 — Final EDA Report Generation
+### 9. Model 2 - Final EDA Report Generation
 
 Model 2 receives:
 
@@ -293,23 +293,23 @@ EDA-Guider maintains an audit trail for preprocessing and analytical decisions, 
 
 ## Design Principles
 
-- **Analyst stays in control** — the system provides recommendations and explanations rather than replacing human judgment.
-- **Original data is never modified** — preprocessing is performed on an internal copy.
-- **Dataset-adaptive** — preprocessing and visualization recommendations depend on the actual dataset.
-- **Deterministic where reliability matters** — profiling, preprocessing rules, statistics, and visualization candidate generation use deterministic logic.
-- **Model-based reasoning and synthesis** — Model 1 selects useful visualizations and Model 2 produces the final human-readable report.
-- **Evidence-grounded** — models receive structured evidence rather than raw dataset records.
-- **Explainable by default** — preprocessing decisions and their reasoning are recorded in the audit trail.
-- **No chart generation** — the system recommends suitable visualizations but does not render the charts itself.
+- **Analyst stays in control** - the system provides recommendations and explanations rather than replacing human judgment.
+- **Original data is never modified** - preprocessing is performed on an internal copy.
+- **Dataset-adaptive** - preprocessing and visualization recommendations depend on the actual dataset.
+- **Deterministic where reliability matters** - profiling, preprocessing rules, statistics, and visualization candidate generation use deterministic logic.
+- **Model-based reasoning and synthesis** - Model 1 selects useful visualizations and Model 2 produces the final human-readable report.
+- **Evidence-grounded** - models receive structured evidence rather than raw dataset records.
+- **Explainable by default** - preprocessing decisions and their reasoning are recorded in the audit trail.
+- **No chart generation** - the system recommends suitable visualizations but does not render the charts itself.
 
 ---
 
 ## Tech Stack
 
-- **Python** — core application and pipeline development
-- **Pandas** — data loading, manipulation, profiling, preprocessing, and statistical analysis
-- **Custom Rule Engine** — deterministic profiling, preprocessing decisions, and visualization recommendation logic
-- **LangChain** — LLM orchestration using Runnable-based workflows
-- **Google Gemini** — Model 1 for visualization selection and Model 2 for final EDA report generation
-- **Pydantic** — structured validation and LLM output schemas
-- **Streamlit** — interactive application interface
+- **Python** - core application and pipeline development
+- **Pandas** - data loading, manipulation, profiling, preprocessing, and statistical analysis
+- **Custom Rule Engine** - deterministic profiling, preprocessing decisions, and visualization recommendation logic
+- **LangChain** - LLM orchestration using Runnable-based workflows
+- **Google Gemini** - Model 1 for visualization selection and Model 2 for final EDA report generation
+- **Pydantic** - structured validation and LLM output schemas
+- **Streamlit** - interactive application interface
