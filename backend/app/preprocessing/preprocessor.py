@@ -119,8 +119,11 @@ def convert_to_numeric(
     """
     Convert selected columns to numeric values.
 
-    Values that do not parse are represented as NA; the plan executor
-    rejects conversions that would lose non-null values.
+    Values that do not parse are represented as NA.
+
+    The plan executor records invalid non-null values separately
+    and converts them to missing values when the conversion
+    confidence is sufficiently high.
 
     This operation should only be called when the
     rule engine has already determined that conversion
@@ -205,16 +208,15 @@ def convert_to_boolean(
                 return value
 
             if isinstance(value, str):
-
                 normalized = value.strip().lower()
 
-                if normalized in true_values:
+                if normalized in {"true", "yes", "y", "1"}:
                     return True
 
-                if normalized in false_values:
+                if normalized in {"false", "no", "n", "0"}:
                     return False
 
-            if value in [1, 0]:
+            if isinstance(value, (int, float)) and value in [0, 1]:
                 return bool(value)
 
             return pd.NA

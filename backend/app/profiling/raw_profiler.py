@@ -78,21 +78,29 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
 
     null_count = int(series.isna().sum())
     unique_count = int(series.nunique(dropna=True))
+
     sample_values = [
         _json_safe(value)
         for value in series.dropna().head(_SAMPLE_SIZE).tolist()
     ]
+
     null_percentage = (null_count / row_count * 100) if row_count else 0.0
     unique_ratio = (unique_count / row_count) if row_count else 0.0
+
     values = series.dropna()
-    string_values = values[values.map(lambda value: isinstance(value, str))]
+
+    string_values = values[
+        values.map(lambda value: isinstance(value, str))
+    ]
     string_count = len(string_values)
+
     null_like_count = int(
         series.map(
             lambda value: isinstance(value, str)
             and value.strip().lower() in _NULL_LIKE_VALUES
         ).sum()
     )
+
     null_like_breakdown = {
         marker: int(
             series.map(
@@ -102,103 +110,275 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         )
         for marker in sorted(_NULL_LIKE_VALUES)
     }
+
     whitespace_count = int(
-        sum(value != value.strip() for value in string_values.tolist())
+        sum(
+            value != value.strip()
+            for value in string_values.tolist()
+        )
     )
+
     empty_string_count = int(
-        sum(value.strip() == "" for value in string_values.tolist())
+        sum(
+            value.strip() == ""
+            for value in string_values.tolist()
+        )
     )
-    non_null_types = {type(value).__name__ for value in values.tolist()}
+
+    non_null_types = {
+        type(value).__name__
+        for value in values.tolist()
+    }
+
     average_string_length = (
-        float(string_values.map(len).mean()) if not string_values.empty else 0.0
+        float(string_values.map(len).mean())
+        if not string_values.empty
+        else 0.0
     )
+
     lower_values = {
         value.strip().lower()
         for value in string_values.tolist()
         if value.strip()
     }
+
     case_variation = len(lower_values) < len(
-        {value.strip() for value in string_values.tolist() if value.strip()}
+        {
+            value.strip()
+            for value in string_values.tolist()
+            if value.strip()
+        }
     )
+
     format_signatures = _format_signatures(string_values)
+
     non_null_count = len(values)
-    numeric_like_count = int(numeric_parse_mask(values).sum())
+
+    numeric_like_count = int(
+        numeric_parse_mask(values).sum()
+    )
+
     datetime_like_count = 0
-    if not pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
+
+    if (
+        not pd.api.types.is_numeric_dtype(series)
+        and not pd.api.types.is_bool_dtype(series)
+    ):
         parsed_datetimes = pd.to_datetime(
             values,
             errors="coerce",
             format="mixed",
         )
+
         datetime_like_count = int(
             pd.Series(parsed_datetimes).notna().sum()
         )
+
     boolean_like_count = int(
         sum(
             isinstance(value, bool)
-            or (isinstance(value, str) and value.strip().lower() in _BOOLEAN_VALUES)
-            or (isinstance(value, (int, float)) and value in (0, 1))
+            or (
+                isinstance(value, str)
+                and value.strip().lower() in _BOOLEAN_VALUES
+            )
+            or (
+                isinstance(value, (int, float))
+                and value in (0, 1)
+            )
             for value in values.tolist()
         )
     )
+
     variable_length = (
-        string_values.map(len).nunique() > 1 if string_count else False
+        string_values.map(len).nunique() > 1
+        if string_count
+        else False
     )
-    id_name_signal = bool(_ID_NAME_PATTERN.search(str(series.name)))
+
+    id_name_signal = bool(
+        _ID_NAME_PATTERN.search(str(series.name))
+    )
+
     index_like = (
-        str(series.name).strip().lower() in {"", "unnamed: 0", "index"}
+        str(series.name).strip().lower()
+        in {"", "unnamed: 0", "index"}
         and pd.api.types.is_numeric_dtype(series)
-        and series.reset_index(drop=True).equals(pd.Series(range(row_count)))
+        and series.reset_index(drop=True).equals(
+            pd.Series(range(row_count))
+        )
     )
 
     warnings: list[str] = []
-    if null_percentage >= _HIGH_MISSING_RATIO * 100:
-        warnings.append("High missingness: at least 50% of values are null.")
-    if row_count and unique_ratio >= _HIGH_CARDINALITY_RATIO and unique_count > 1:
-        warnings.append("High cardinality: at least 90% of rows have unique values.")
-    if unique_count <= 1:
-        warnings.append("Constant or entirely null column.")
 
+    if null_percentage >= _HIGH_MISSING_RATIO * 100:
+        warnings.append(
+            "High missingness: at least 50% of values are null."
+        )
+
+    if (
+        row_count
+        and unique_ratio >= _HIGH_CARDINALITY_RATIO
+        and unique_count > 1
+    ):
+        warnings.append(
+            "High cardinality: at least 90% of rows have unique values."
+        )
+
+    if unique_count <= 1:
+        warnings.append(
+            "Constant or entirely null column."
+        )
+
+    # ---------------------------------------------------------
+    # Numeric statistics
+    # ---------------------------------------------------------
     outlier_count = 0
     skewness = None
-    numeric_values = pd.to_numeric(values, errors="coerce")
-    numeric_values = numeric_values.dropna()
+
+    # Detect actual Boolean values even when the Series dtype is object.
+    non_null_values = values.tolist()
+
+    is_boolean_data = (
+        bool(non_null_values)
+        and all(isinstance(value, bool) for value in non_null_values)
+    )
+
+    # Boolean columns should not be treated as continuous numeric data.
+    if (
+        pd.api.types.is_bool_dtype(series)
+        or is_boolean_data
+    ):
+        numeric_values = pd.Series(dtype="float64")
+
+    else:
+        numeric_values = pd.to_numeric(
+            values,
+            errors="coerce",
+        )
+
+        numeric_values = numeric_values.dropna()
+
+        # Always use a real floating-point dtype for
+        # numerical statistics such as skewness.
+        numeric_values = numeric_values.astype("float64")
+
     if len(numeric_values) >= 4:
         q1 = numeric_values.quantile(0.25)
         q3 = numeric_values.quantile(0.75)
         iqr = q3 - q1
+
         if iqr:
             outlier_count = int(
-                ((numeric_values < q1 - 1.5 * iqr) | (numeric_values > q3 + 1.5 * iqr)).sum()
+                (
+                    (numeric_values < q1 - 1.5 * iqr)
+                    | (numeric_values > q3 + 1.5 * iqr)
+                ).sum()
             )
-        skewness = float(numeric_values.skew())
+
+        skewness = float(
+            numeric_values.skew()
+        )
+
         if abs(skewness) >= 1:
-            warnings.append("Heavily skewed numeric column.")
+            warnings.append(
+                "Heavily skewed numeric column."
+            )
+
+    # ---------------------------------------------------------
+    # Semantic type classification
+    # ---------------------------------------------------------
 
     if pd.api.types.is_numeric_dtype(series):
-        semantic_type, classification_confidence = "numeric", 1.0
+        semantic_type, classification_confidence = (
+            "numeric",
+            1.0,
+        )
+
     elif pd.api.types.is_bool_dtype(series):
-        semantic_type, classification_confidence = "boolean", 1.0
-    elif numeric_like_count and numeric_like_count / max(1, non_null_count) >= 0.8:
-        semantic_type, classification_confidence = "numeric", numeric_like_count / non_null_count
-    elif datetime_like_count and datetime_like_count / max(1, non_null_count) >= 0.8:
-        semantic_type, classification_confidence = "datetime", datetime_like_count / non_null_count
-    elif boolean_like_count and boolean_like_count / max(1, non_null_count) >= 0.8:
-        semantic_type, classification_confidence = "boolean", boolean_like_count / non_null_count
-    elif id_name_signal and unique_ratio >= 0.9:
-        semantic_type, classification_confidence = "identifier", unique_ratio
-    elif unique_ratio <= 0.2 and unique_count > 1:
-        semantic_type, classification_confidence = "categorical", 1.0 - unique_ratio
-    elif string_count and unique_ratio >= 0.9 and variable_length:
-        semantic_type, classification_confidence = "free_text", unique_ratio
+        semantic_type, classification_confidence = (
+            "boolean",
+            1.0,
+        )
+
+    elif (
+        numeric_like_count
+        and numeric_like_count
+        / max(1, non_null_count)
+        >= 0.8
+    ):
+        semantic_type, classification_confidence = (
+            "numeric",
+            numeric_like_count / non_null_count,
+        )
+
+    elif (
+        datetime_like_count
+        and datetime_like_count
+        / max(1, non_null_count)
+        >= 0.8
+    ):
+        semantic_type, classification_confidence = (
+            "datetime",
+            datetime_like_count / non_null_count,
+        )
+
+    elif (
+        boolean_like_count
+        and boolean_like_count
+        / max(1, non_null_count)
+        >= 0.8
+    ):
+        semantic_type, classification_confidence = (
+            "boolean",
+            boolean_like_count / non_null_count,
+        )
+
+    elif (
+        id_name_signal
+        and unique_ratio >= 0.9
+    ):
+        semantic_type, classification_confidence = (
+            "identifier",
+            unique_ratio,
+        )
+
+    elif (
+        unique_ratio <= 0.2
+        and unique_count > 1
+    ):
+        semantic_type, classification_confidence = (
+            "categorical",
+            1.0 - unique_ratio,
+        )
+
+    elif (
+        string_count
+        and unique_ratio >= 0.9
+        and variable_length
+    ):
+        semantic_type, classification_confidence = (
+            "free_text",
+            unique_ratio,
+        )
+
     else:
-        semantic_type, classification_confidence = "unresolved", 0.0
+        semantic_type, classification_confidence = (
+            "unresolved",
+            0.0,
+        )
+
+    # ---------------------------------------------------------
+    # Final column profile
+    # ---------------------------------------------------------
 
     return {
         "name": str(series.name),
         "dtype": str(series.dtype),
         "null_count": null_count,
-        "null_percentage": round(null_percentage, 4),
+        "null_percentage": round(
+            null_percentage,
+            4,
+        ),
         "unique_count": unique_count,
         "sample_values": sample_values,
         "null_like_count": null_like_count,
@@ -206,52 +386,108 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
         "whitespace_count": whitespace_count,
         "empty_string_count": empty_string_count,
         "whitespace_only_count": int(
-            sum(value.strip() == "" and value != "" for value in string_values.tolist())
+            sum(
+                value.strip() == "" and value != ""
+                for value in string_values.tolist()
+            )
         ),
-        "average_string_length": round(average_string_length, 4),
-        "uniqueness_ratio": round(unique_ratio, 4),
+        "average_string_length": round(
+            average_string_length,
+            4,
+        ),
+        "uniqueness_ratio": round(
+            unique_ratio,
+            4,
+        ),
         "mixed_type_count": len(non_null_types),
         "has_mixed_types": len(non_null_types) > 1,
         "has_case_variations": case_variation,
+
         "numeric_like_percentage": round(
-            numeric_like_count / non_null_count * 100, 4
+            numeric_like_count / non_null_count * 100,
+            4,
         ) if non_null_count else 0.0,
+
         "datetime_like_percentage": round(
-            datetime_like_count / non_null_count * 100, 4
+            datetime_like_count / non_null_count * 100,
+            4,
         ) if non_null_count else 0.0,
+
         "boolean_like_percentage": round(
-            boolean_like_count / non_null_count * 100, 4
+            boolean_like_count / non_null_count * 100,
+            4,
         ) if non_null_count else 0.0,
+
         "is_likely_id": bool(
             row_count > 1
             and unique_ratio >= _HIGH_CARDINALITY_RATIO
             and id_name_signal
         ),
+
         "is_index_like": bool(index_like),
+
         "is_categorical": bool(
-            row_count > 0 and unique_ratio <= 0.20 and unique_count > 1
+            row_count > 0
+            and unique_ratio <= 0.20
+            and unique_count > 1
         ),
+
         "is_free_text": bool(
-            string_count > 0 and unique_ratio >= _HIGH_CARDINALITY_RATIO
+            string_count > 0
+            and unique_ratio >= _HIGH_CARDINALITY_RATIO
             and variable_length
         ),
+
         "semantic_type": semantic_type,
-        "classification_confidence": round(float(classification_confidence), 4),
-        "format_signatures": sorted(format_signatures),
-        "mixed_format_warning": len(format_signatures) > 1,
+
+        "classification_confidence": round(
+            float(classification_confidence),
+            4,
+        ),
+
+        "format_signatures": sorted(
+            format_signatures
+        ),
+
+        "mixed_format_warning": (
+            len(format_signatures) > 1
+        ),
+
         "outlier_count": outlier_count,
+
         "outlier_values": [
             _json_safe(value)
             for value in numeric_values[
-                (numeric_values < numeric_values.quantile(0.25) - 1.5 * (numeric_values.quantile(0.75) - numeric_values.quantile(0.25)))
-                | (numeric_values > numeric_values.quantile(0.75) + 1.5 * (numeric_values.quantile(0.75) - numeric_values.quantile(0.25)))
+                (
+                    numeric_values
+                    < numeric_values.quantile(0.25)
+                    - 1.5
+                    * (
+                        numeric_values.quantile(0.75)
+                        - numeric_values.quantile(0.25)
+                    )
+                )
+                |
+                (
+                    numeric_values
+                    > numeric_values.quantile(0.75)
+                    + 1.5
+                    * (
+                        numeric_values.quantile(0.75)
+                        - numeric_values.quantile(0.25)
+                    )
+                )
             ].tolist()
         ] if outlier_count else [],
-        "skewness": round(skewness, 6) if skewness is not None else None,
+
+        "skewness": (
+            round(skewness, 6)
+            if skewness is not None
+            else None
+        ),
+
         "warnings": warnings,
     }
-
-
 def _correlation_warnings(df: pd.DataFrame) -> list[dict]:
     """Find highly correlated numeric column pairs without modifying ``df``."""
 

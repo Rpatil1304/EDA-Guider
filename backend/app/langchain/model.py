@@ -714,10 +714,10 @@ The deterministic rule engine has already performed profiling,
 preprocessing, statistical analysis, and visualization candidate
 generation.
 
-Gemini #1 has already reviewed the visualization candidates and
+Model 1 has already reviewed the visualization candidates and
 selected the most useful visualizations.
 
-You are Gemini #2.
+You are Model 2.
 
 Your responsibility is to synthesize ALL supplied evidence into
 ONE concise, readable, dataset-specific final EDA report.
@@ -735,7 +735,7 @@ You MUST:
 - explain preprocessing in normal human language
 - explain the resulting cleaned dataset
 - summarize important statistical findings
-- explain only the visualizations selected by Gemini #1
+- explain only the visualizations selected by Model 1
 - use the rule-engine information as supporting evidence
 - keep the report concise and non-repetitive
 - use only information supplied in the evidence
@@ -752,7 +752,7 @@ You MUST NOT:
 - generate or render charts
 - create new visualization recommendations
 - select additional visualizations
-- override Gemini #1's visualization selection
+- override Model 1's visualization selection
 - expose internal pipeline implementation details
 - reproduce the complete preprocessing execution log
 - reproduce every statistic mechanically
@@ -939,11 +939,11 @@ The purpose of this section is to answer:
 
 IMPORTANT:
 
-Gemini #1 has already selected the final visualizations.
+Model 1 has already selected the final visualizations.
 
 You MUST use ONLY the visualizations supplied in:
 
-"Gemini #1 Selected Visualizations"
+"Model 1 Selected Visualizations"
 
 The rule-engine visualization candidates are provided only as
 supporting context.
@@ -971,7 +971,7 @@ Do not write long explanations for individual charts.
 Do not repeat the same analytical message across multiple
 visualization descriptions.
 
-If Gemini #1 selected only a few visualizations, explain only
+If Model 1 selected only a few visualizations, explain only
 those visualizations.
 
 The purpose of this section is to answer:
@@ -1059,7 +1059,7 @@ Follow the five required report sections exactly.
     human_message = """
 Generate the FINAL EDA REPORT using ONLY the supplied evidence.
 
-You are Gemini #2, the final report generator.
+You are Model 2, the final report generator.
 
 The evidence is divided into:
 
@@ -1068,7 +1068,7 @@ The evidence is divided into:
 3. Cleaned dataset information
 4. Statistical information
 5. Rule-engine visualization candidates
-6. Gemini #1 selected visualizations
+6. Model 1 selected visualizations
 
 ---------------------------------------------------------------
 RAW DATA INFORMATION
@@ -1110,10 +1110,10 @@ Do NOT create new visualization recommendations.
 {visualization_candidates}
 
 ---------------------------------------------------------------
-GEMINI #1 SELECTED VISUALIZATIONS
+Model 1 SELECTED VISUALIZATIONS
 ---------------------------------------------------------------
 
-These are the final visualizations selected by Gemini #1.
+These are the final visualizations selected by Model 1.
 
 ONLY these visualizations should be described in the final
 Visualization Information section.
@@ -1138,7 +1138,7 @@ Important:
 
 - summarize preprocessing instead of repeating every operation
 - summarize statistics instead of listing every statistic
-- explain only Gemini #1 selected visualizations
+- explain only Model 1 selected visualizations
 - do not add visualization candidates
 - do not create additional sections
 - do not expose raw records
@@ -1272,9 +1272,15 @@ def validate_visualization_recommendations(
         visualization_recommendations,
     )
 
-    return chain.invoke(
+    print("\n========== MODEL 1 START ==========")
+
+    result = chain.invoke(
         prepared_input
     )
+
+    print("========== MODEL 1 COMPLETE ==========\n")
+
+    return result
 
 # ================================================================
 # Input Preparation
@@ -1466,7 +1472,7 @@ def prepare_visualization_validation_input(
         )
 
     # ------------------------------------------------------------
-    # Final Gemini #1 input
+    # Final Model 1 input
     # ------------------------------------------------------------
 
     return {
@@ -1484,14 +1490,14 @@ def prepare_final_report_input(
     Prepare complete privacy-safe evidence for final EDA report
     generation.
 
-    Gemini #2 receives:
+    Model 2 receives:
 
     - raw dataset information
     - preprocessing information
     - cleaned dataset information
     - statistical information
     - rule-based visualization candidates
-    - Gemini #1 selected visualizations
+    - Model 1 selected visualizations
 
     Raw dataset rows are never included.
     """
@@ -1682,7 +1688,7 @@ def prepare_final_report_input(
         )
 
     # ------------------------------------------------------------
-    # Gemini #1 selected visualizations
+    # Model 1 selected visualizations
     # ------------------------------------------------------------
 
     visualization_validation = pipeline_result.get(
@@ -1702,7 +1708,7 @@ def prepare_final_report_input(
         )
 
     # ------------------------------------------------------------
-    # Final Gemini #2 input
+    # Final Model 2 input
     # ------------------------------------------------------------
 
     return {
@@ -1730,6 +1736,12 @@ def generate_final_report(
         pipeline_result
     )
 
-    return chain.invoke(
+    print("\n========== MODEL 2 START ==========")
+
+    result = chain.invoke(
         prepared_input
     )
+
+    print("========== MODEL 2 COMPLETE ==========\n")
+
+    return result
