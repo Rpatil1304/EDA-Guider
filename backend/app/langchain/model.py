@@ -700,6 +700,8 @@ Do NOT include markdown or any text outside the JSON object.
     )
 
 
+
+
 def get_final_report_prompt():
 
     parser = get_final_report_output_parser()
@@ -735,7 +737,10 @@ You MUST:
 - explain preprocessing in normal human language
 - explain the resulting cleaned dataset
 - summarize important statistical findings
-- explain only the visualizations selected by Model 1
+- present only the visualizations selected by Model 1
+- preserve the exact chart types and column combinations selected
+  by Model 1
+- group visualization recommendations by chart type
 - use the rule-engine information as supporting evidence
 - keep the report concise and non-repetitive
 - use only information supplied in the evidence
@@ -773,11 +778,8 @@ The final report MUST contain EXACTLY these five sections:
 Do not create additional sections.
 
 Do not create a separate dataset overview section.
-
 Do not create a separate data-quality section.
-
 Do not create a separate preprocessing summary section.
-
 Do not create a separate visualization-selection section.
 
 Everything must be incorporated into the five required sections.
@@ -800,13 +802,7 @@ Include important information such as:
 - missing-value information
 - important data-quality issues supported by the evidence
 
-The purpose of this section is to answer:
-
-"What did the original dataset look like, and what important
-issues were present?"
-
 If missing values exist, clearly mention them.
-
 If there are no missing values, state that clearly.
 
 When conversion-quality information is supplied, distinguish between:
@@ -818,12 +814,6 @@ When conversion-quality information is supplied, distinguish between:
 
 Do NOT combine these two counts into one number.
 
-If invalid values were converted to missing values, mention this as an
-important data-quality issue when relevant.
-
-Do not list unnecessary metadata that does not help the user
-understand the dataset.
-
 Do not expose individual dataset records.
 
 ---------------------------------------------------------------
@@ -832,45 +822,26 @@ Do not expose individual dataset records.
 
 Explain what preprocessing was performed by the backend.
 
-This section MUST be written in normal language that a user,
-analyst, or interviewer can understand.
+Write this section in normal language that a user, analyst, or
+interviewer can understand.
 
 Do NOT reproduce the internal execution log.
 
-Do NOT list the same operation separately for every column.
+GROUP similar preprocessing operations into meaningful statements.
+For example, describe repeated whitespace removal or repeated type
+conversion together instead of listing every column separately.
 
-Instead, GROUP similar preprocessing operations into meaningful
-statements.
-
-For example, if multiple columns had whitespace removed, explain
-that together rather than listing:
-
-- column A whitespace removed
-- column B whitespace removed
-- column C whitespace removed
-
-Instead, summarize them as one understandable statement.
-
-Similarly, group repeated type conversions, normalization,
-duplicate handling, or similar transformations.
-
-Mention:
+Mention only operations supported by the supplied evidence, including
+when relevant:
 
 - important preprocessing actions
 - important transformations
 - rows before and after preprocessing
 - columns before and after preprocessing
-- excluded columns when relevant
-- unresolved or review-required issues when relevant
-
-Only mention operations that actually appear in the supplied
-evidence.
+- excluded columns
+- unresolved or review-required issues
 
 Do not invent preprocessing operations.
-
-The purpose of this section is to answer:
-
-"What did the backend do to prepare the data for analysis?"
 
 ---------------------------------------------------------------
 3. CLEANED DATA INFORMATION
@@ -878,33 +849,22 @@ The purpose of this section is to answer:
 
 Describe the dataset after preprocessing.
 
-Include:
+Include when available:
 
 - cleaned row count
 - cleaned column count
 - retained columns or important retained column groups
-- excluded columns when available
+- excluded columns
 - important resulting changes
 
-Explain the resulting dataset structure in simple language.
-
 Do not repeat the complete preprocessing explanation.
-
 Do not expose raw dataset rows.
-
-The purpose of this section is to answer:
-
-"What does the dataset look like after preprocessing?"
 
 ---------------------------------------------------------------
 4. STATISTICAL INFORMATION
 ---------------------------------------------------------------
 
-Summarize the important statistical findings.
-
-Do NOT reproduce every statistic.
-
-Select only meaningful findings supported by the evidence.
+Summarize only the important statistical findings supported by the evidence.
 
 Possible findings include:
 
@@ -918,26 +878,13 @@ Possible findings include:
 - meaningful correlations
 - notable differences between variables
 
-Use actual values when they are supplied in the evidence and
-help explain the finding.
-
-Do not invent values.
-
-Do not create unsupported interpretations.
-
-Do not turn every statistic into a separate bullet.
-
-Group related findings where appropriate.
-
-The purpose of this section is to answer:
-
-"What important patterns or characteristics were found in the data?"
+Use actual values when supplied and useful.
+Do not invent values or unsupported interpretations.
+Do not mechanically reproduce every statistic.
 
 ---------------------------------------------------------------
 5. VISUALIZATION INFORMATION
 ---------------------------------------------------------------
-
-IMPORTANT:
 
 Model 1 has already selected the final visualizations.
 
@@ -945,39 +892,120 @@ You MUST use ONLY the visualizations supplied in:
 
 "Model 1 Selected Visualizations"
 
-The rule-engine visualization candidates are provided only as
-supporting context.
-
+The rule-engine visualization candidates are supporting context only.
 They are NOT additional visualizations to explain.
 
 DO NOT select new visualizations.
-
 DO NOT explain rejected candidates.
-
 DO NOT explain every rule-engine candidate.
-
 DO NOT expand the visualization list.
 
-For each selected visualization, briefly state:
+---------------------------------------------------------------
+VISUALIZATION OUTPUT STRUCTURE
+---------------------------------------------------------------
 
-- visualization type
-- relevant column(s)
-- what analytical purpose it serves
+The field "visualization_recommendations" MUST contain:
 
-Keep each explanation concise.
+- "overview": one short sentence
+- "recommendations": a list of grouped recommendation objects
 
-Do not write long explanations for individual charts.
+Each recommendation object MUST contain:
 
-Do not repeat the same analytical message across multiple
-visualization descriptions.
+- "chart_type": one human-readable chart type
+- "visualizations": a list of individual visualization descriptions
 
-If Model 1 selected only a few visualizations, explain only
-those visualizations.
+Group visualizations with the same chart type into ONE recommendation
+object.
 
-The purpose of this section is to answer:
+The intended display format is:
 
-"Which visualizations are recommended and what will each help
-the analyst understand?"
+1. Line Plot:
+   a) Age vs Quantity
+   b) Join_Date vs Quantity
+
+2. Bar Plot:
+   a) Status
+   b) Category vs Profit
+
+3. Histogram:
+   a) Age
+   b) Salary
+
+This is only a format example.
+DO NOT use these example columns unless they are actually selected by
+Model 1.
+
+Do NOT put numbering or lettering into the JSON values.
+Do NOT add explanations after visualization names.
+Do NOT combine multiple visualizations into one sentence.
+
+For one-column visualization:
+"Age"
+
+For two-column visualization:
+"Age vs Quantity"
+
+For multiple-column visualization:
+"Age, Salary, Experience, Quantity, Profit"
+
+For heatmaps, preserve the exact set of columns selected by Model 1.
+
+---------------------------------------------------------------
+PRESERVE MODEL 1 SELECTION
+---------------------------------------------------------------
+
+Every Model 1 selected visualization MUST appear exactly once.
+
+You MUST:
+
+- preserve the exact chart type selected by Model 1
+- preserve the exact selected columns
+- preserve column order within a visualization
+- keep separate Model 1 visualizations separate
+- group only by identical chart type
+
+You MUST NOT:
+
+- replace columns
+- add columns
+- remove columns
+- create new feature combinations
+- infer additional relationships
+- merge different visualizations into one
+- split one selected visualization into multiple visualizations
+
+---------------------------------------------------------------
+CHART TYPE NORMALIZATION
+---------------------------------------------------------------
+
+Use these human-readable names:
+
+histogram -> Histogram
+box_plot -> Box Plot
+bar_chart -> Bar Plot
+pie_chart -> Pie Chart
+scatter_plot -> Scatter Plot
+line_chart -> Line Plot
+grouped_bar_chart -> Grouped Bar Plot
+stacked_bar_chart -> Stacked Bar Plot
+100_percent_stacked_bar_chart -> 100% Stacked Bar Plot
+heatmap -> Heatmap
+missingness_bar_chart -> Missingness Bar Plot
+missingness_heatmap -> Missingness Heatmap
+violin_plot -> Violin Plot
+qq_plot -> QQ Plot
+pair_plot -> Pair Plot
+
+Do not create new chart types.
+
+---------------------------------------------------------------
+VISUALIZATION OVERVIEW
+---------------------------------------------------------------
+
+The "overview" field should contain ONE short sentence stating that
+the visualizations were selected by Model 1.
+
+Do not repeat individual visualization descriptions in the overview.
 
 ---------------------------------------------------------------
 WRITING STYLE
@@ -994,48 +1022,20 @@ The final report must be:
 - evidence-based
 - useful to a human analyst
 
-Write like a human analyst is explaining the result to another
-human.
+Write naturally for a human analyst.
+Avoid unnecessary technical jargon, repetition, generic EDA explanations,
+and unsupported conclusions.
 
-Avoid:
-
-- unnecessary technical jargon
-- internal implementation terminology
-- repeated statements
-- long paragraphs
-- generic EDA explanations
-- repetitive preprocessing steps
-- repetitive visualization explanations
-- unnecessary lists
-- unsupported conclusions
-
-Do not make the report sound like a raw JSON dump.
-
-Convert structured evidence into natural language.
-
----------------------------------------------------------------
-REPORT LENGTH
----------------------------------------------------------------
-
-Keep the final report concise.
-
-Each section should contain only the information necessary to
-understand the dataset and the analysis.
-
-Do not attempt to describe every piece of supplied evidence.
-
-Prioritize meaningful information over completeness of repetition.
+The first four sections should be natural-language summaries.
+Keep the Visualization Information section structurally organized.
 
 ---------------------------------------------------------------
 PRIVACY
 ---------------------------------------------------------------
 
 The supplied evidence does not contain raw dataset rows.
-
 Do not attempt to reconstruct or infer individual records.
-
-Only describe aggregate, statistical, structural, and metadata-level
-information.
+Only describe aggregate, statistical, structural, and metadata-level information.
 
 ---------------------------------------------------------------
 OUTPUT RULES
@@ -1044,18 +1044,16 @@ OUTPUT RULES
 Return ONLY the JSON object required by the Pydantic schema.
 
 Do not return markdown.
-
 Do not return explanations outside the JSON object.
-
 Do not add fields that are not defined by the schema.
-
 Do not invent information.
 
-Follow the five required report sections exactly.
+The visualization_recommendations field MUST follow the structured
+Pydantic schema. Do not add fields such as decision, reason, confidence,
+original_chart_type, or final_columns to its recommendation objects.
 
 {format_instructions}
 """
-
     human_message = """
 Generate the FINAL EDA REPORT using ONLY the supplied evidence.
 
@@ -1730,6 +1728,8 @@ def generate_final_report(
     The LLM receives only privacy-safe structured evidence.
     """
 
+    import time
+
     chain = build_final_report_chain()
 
     prepared_input = prepare_final_report_input(
@@ -1738,10 +1738,49 @@ def generate_final_report(
 
     print("\n========== MODEL 2 START ==========")
 
-    result = chain.invoke(
-        prepared_input
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+
+        try:
+            print(
+                f"Model 2 attempt {attempt}/{max_attempts}"
+            )
+
+            result = chain.invoke(
+                prepared_input
+            )
+
+            print(
+                "========== MODEL 2 COMPLETE ==========\n"
+            )
+
+            return result
+
+        except Exception as error:
+
+            error_message = str(error)
+
+            # Retry only temporary Google/Gemini availability errors.
+            if "503" not in error_message:
+                raise
+
+            if attempt == max_attempts:
+                print(
+                    "Model 2 failed after "
+                    f"{max_attempts} attempts."
+                )
+                raise
+
+            wait_seconds = 3 * attempt
+
+            print(
+                f"Model 2 received 503. "
+                f"Waiting {wait_seconds} seconds before retry..."
+            )
+
+            time.sleep(wait_seconds)
+
+    raise RuntimeError(
+        "Model 2 failed unexpectedly."
     )
-
-    print("========== MODEL 2 COMPLETE ==========\n")
-
-    return result

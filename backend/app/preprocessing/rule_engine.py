@@ -24,7 +24,12 @@ def generate_preprocessing_plan(
     actions: list[PreprocessingAction] = []
 
     for column_profile in profile.column_profiles:
-
+        if column_profile.name.lower() == "join_date":
+            print(
+                "Join_Date:",
+                "inferred_type =", column_profile.inferred_type,
+                "datetime_score =", column_profile.datetime_parseable_percentage
+            )
         column = column_profile.name
         is_constant = column_profile.is_constant
 

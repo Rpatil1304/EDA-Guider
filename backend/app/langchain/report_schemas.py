@@ -176,12 +176,22 @@ class FinalStatisticalReport(BaseModel):
     )
 
 
+class VisualizationRecommendation(BaseModel):
+    """Structured visualization recommendation."""
+
+    chart_type: str = ""
+
+    visualizations: list[str] = Field(
+        default_factory=list
+    )
+
+
 class FinalVisualizationReport(BaseModel):
     """Human-readable visualization recommendation summary."""
 
     overview: str = ""
 
-    recommendations: list[str] = Field(
+    recommendations: list[VisualizationRecommendation] = Field(
         default_factory=list
     )
 
