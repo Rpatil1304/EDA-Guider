@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.langchain.report_schemas import (
+    ConversionEvidence,
     DatasetReportEvidence,
     EDAReportEvidence,
     PreprocessingReportEvidence,
@@ -106,6 +107,13 @@ def build_preprocessing_report_evidence(
             "columns_after",
             0,
         ),
+        conversion_evidence=[
+            ConversionEvidence.model_validate(item)
+            for item in preprocessing_information.get(
+                "conversion_evidence",
+                [],
+            )
+        ],
     )
 
 

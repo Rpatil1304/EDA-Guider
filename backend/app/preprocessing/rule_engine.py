@@ -4,6 +4,8 @@ from app.schemas.preprocessing import (
     PreprocessingAction,
     PreprocessingPlan,
 )
+# The raw-profile rule engine is the canonical planner for ingestion.
+# This module remains only for compatibility with the older DatasetProfile API.
 
 
 def generate_preprocessing_plan(

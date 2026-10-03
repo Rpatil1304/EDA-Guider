@@ -32,6 +32,20 @@ class DatasetReportEvidence(BaseModel):
     )
 
 
+class ConversionEvidence(BaseModel):
+    """Structured, privacy-safe evidence for one type conversion."""
+
+    columns: list[str] = Field(default_factory=list)
+    action: str = ""
+    status: str = ""
+    confidence: float = 0.0
+    invalid_non_null_count: int = 0
+    null_percentage_before: float = 0.0
+    null_percentage_after: float = 0.0
+    data_loss: float = 0.0
+    timezone_policy: str | None = None
+
+
 class PreprocessingReportEvidence(BaseModel):
     """Information about preprocessing performed."""
 
@@ -44,6 +58,10 @@ class PreprocessingReportEvidence(BaseModel):
 
     columns_before: int = 0
     columns_after: int = 0
+
+    conversion_evidence: list[ConversionEvidence] = Field(
+        default_factory=list
+    )
 
 
 class StatisticalReportEvidence(BaseModel):

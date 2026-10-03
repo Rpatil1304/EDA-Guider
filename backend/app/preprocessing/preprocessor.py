@@ -144,7 +144,8 @@ def convert_to_numeric(
 
 def convert_to_datetime(
     df: pd.DataFrame,
-    columns: list[str]
+    columns: list[str],
+    date_dayfirst: bool | None = None,
 ) -> pd.DataFrame:
     """
     Convert selected columns to datetime.
@@ -161,7 +162,10 @@ def convert_to_datetime(
 
         df[column] = pd.to_datetime(
             df[column],
-            errors="coerce"
+            errors="coerce",
+            format="mixed",
+            dayfirst=date_dayfirst if date_dayfirst is not None else False,
+            utc=True,
         )
 
     return df
@@ -179,20 +183,6 @@ def convert_to_boolean(
     """
 
     df = df.copy()
-
-    true_values = {
-        "true",
-        "yes",
-        "y",
-        "1",
-    }
-
-    false_values = {
-        "false",
-        "no",
-        "n",
-        "0",
-    }
 
     for column in columns:
 
@@ -224,6 +214,33 @@ def convert_to_boolean(
         df[column] = df[column].map(convert_value)
 
     return df
+
+
+def _parse_boolean_series(series: pd.Series) -> tuple[pd.Series, int]:
+    """Convert Boolean representations and count unknown non-null values."""
+
+    true_values = {"true", "yes", "y", "1"}
+    false_values = {"false", "no", "n", "0"}
+    unknown_count = 0
+
+    def convert_value(value):
+        nonlocal unknown_count
+        if pd.isna(value):
+            return pd.NA
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in true_values:
+                return True
+            if normalized in false_values:
+                return False
+        if isinstance(value, (int, float)) and value in (0, 1):
+            return bool(value)
+        unknown_count += 1
+        return pd.NA
+
+    return series.map(convert_value), unknown_count
 
 
 def normalize_case(
@@ -473,6 +490,7 @@ def execute_preprocessing_plan(
     plan: PreprocessingPlan,
     data_loss_threshold: float = 0.30,
     case_strategy: str = "lower",
+    date_dayfirst: bool | None = None,
 ) -> tuple[pd.DataFrame, list[dict]]:
     """Execute a Part 4 plan on a private copy in a fixed safe order.
 
@@ -488,6 +506,8 @@ def execute_preprocessing_plan(
         raise ValueError("data_loss_threshold must be between 0 and 1.")
     if case_strategy not in {"lower", "upper", "title"}:
         raise ValueError("case_strategy must be lower, upper, or title.")
+    if date_dayfirst not in {None, True, False}:
+        raise ValueError("date_dayfirst must be True, False, or None.")
 
     cleaned = df.copy(deep=True)
     execution_log: list[dict] = []
@@ -582,7 +602,13 @@ def execute_preprocessing_plan(
     # 5-7. Apply only high-confidence conversion proposals with rollback.
     conversion_actions = {
         "convert_to_numeric": pd.to_numeric,
-        "convert_to_datetime": lambda series, errors: pd.to_datetime(series, errors=errors, format="mixed"),
+        "convert_to_datetime": lambda series, errors: pd.to_datetime(
+            series,
+            errors=errors,
+            format="mixed",
+            dayfirst=date_dayfirst if date_dayfirst is not None else False,
+            utc=True,
+        ),
         "convert_to_boolean": None,
     }
     conversion_seen: set[tuple[str, str]] = set()
@@ -612,18 +638,11 @@ def execute_preprocessing_plan(
             null_before = float(cleaned[column].isna().mean())
 
             if action.action == "convert_to_boolean":
-                converted = cleaned[column].map(
-                    lambda value: pd.NA
-                    if pd.isna(value)
-                    else value
-                    if isinstance(value, bool)
-                    else True
-                    if isinstance(value, str) and value.strip().lower() in {"true", "yes", "y", "1"}
-                    else False
-                    if isinstance(value, str) and value.strip().lower() in {"false", "no", "n", "0"}
-                    else pd.NA
+                converted, unknown_boolean_count = _parse_boolean_series(
+                    cleaned[column]
                 )
             else:
+                unknown_boolean_count = 0
                 if action.action == "convert_to_numeric":
                     converted = parse_numeric_series(cleaned[column])
                 else:
@@ -641,10 +660,39 @@ def execute_preprocessing_plan(
                 - converted.notna().sum()
             )
 
-            # Invalid values are intentionally converted to missing.
-            # Valid values are preserved in their converted type.
-            # `cleaned` is a private deep copy, so the original
-            # uploaded DataFrame remains unchanged.
+            non_null_count_before = int(cleaned[column].notna().sum())
+            loss_ratio = (
+                invalid_non_null_count / non_null_count_before
+                if non_null_count_before
+                else 0.0
+            )
+            if (
+                loss_ratio > data_loss_threshold
+                or unknown_boolean_count > 0
+            ):
+                log(
+                    [column],
+                    action.action,
+                    "rejected",
+                    (
+                        "Boolean conversion encountered unknown non-null values."
+                        if unknown_boolean_count > 0
+                        else "Conversion would exceed the configured data-loss threshold."
+                    ),
+                    actual_nan_count_before=actual_nan_count_before,
+                    invalid_non_null_count=invalid_non_null_count,
+                    null_percentage_before=round(null_before * 100, 4),
+                    null_percentage_after=round(null_after * 100, 4),
+                    data_loss=round(loss_ratio, 4),
+                    confidence=action.confidence,
+                    **(
+                        {"timezone_policy": "utc"}
+                        if action.action == "convert_to_datetime"
+                        else {}
+                    ),
+                )
+                continue
+
             cleaned[column] = converted
 
             log(
@@ -662,10 +710,15 @@ def execute_preprocessing_plan(
                 null_percentage_before=round(null_before * 100, 4),
                 null_percentage_after=round(null_after * 100, 4),
                 data_loss=round(
-                    max(0, null_after - null_before),
+                    loss_ratio,
                     4,
                 ),
                 confidence=action.confidence,
+                **(
+                    {"timezone_policy": "utc"}
+                    if action.action == "convert_to_datetime"
+                    else {}
+                ),
             )
 
     # 8. Record classification and normalize case only when explicitly planned.

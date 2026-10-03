@@ -165,6 +165,25 @@ def _build_preprocessing_report_information(
 
     return {
         "steps": steps,
+        "conversion_evidence": [
+            {
+                key: entry.get(key)
+                for key in (
+                    "columns",
+                    "action",
+                    "status",
+                    "confidence",
+                    "invalid_non_null_count",
+                    "null_percentage_before",
+                    "null_percentage_after",
+                    "data_loss",
+                    "timezone_policy",
+                )
+                if key in entry
+            }
+            for entry in execution_log
+            if entry.get("action", "").startswith("convert_to_")
+        ],
         "rows_before": summary.get(
             "raw_row_count",
             0,
@@ -247,6 +266,7 @@ def run_preprocessing_pipeline(
     file_path_or_buffer,
     data_loss_threshold: float = 0.30,
     case_strategy: str = "lower",
+    date_dayfirst: bool | None = None,
 ) -> dict[str, Any]:
     """
     Run the complete EDA-Guider pipeline.
@@ -282,7 +302,8 @@ def run_preprocessing_pipeline(
 
     try:
         dataframe, ingestion_report = load_file(
-            file_path_or_buffer
+            file_path_or_buffer,
+            date_dayfirst=date_dayfirst,
         )
 
     except Exception as error:
@@ -396,6 +417,7 @@ def run_preprocessing_pipeline(
                 plan,
                 data_loss_threshold=data_loss_threshold,
                 case_strategy=case_strategy,
+                date_dayfirst=date_dayfirst,
             )
         )
 
@@ -571,6 +593,10 @@ def run_preprocessing_pipeline(
 
         result["llm_visualization_validation"] = (
             validate_visualization_recommendations(
+                raw_profile_report=result["raw_profile_report"],
+                preprocessing_summary_report=(
+                    result["preprocessing_summary_report"]
+                ),
                 statistical_profile=(
                     statistical_profile_data
                 ),

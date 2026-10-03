@@ -18,6 +18,12 @@ _REQUIRED_KEYS = {
     "preprocessing_summary_report",
     "cleaned_dataframe",
     "pipeline_error",
+    "statistical_profile",
+    "visualization_recommendations",
+    "visualization_evidence",
+    "visualization_evidence_groups",
+    "llm_visualization_validation",
+    "eda_report_evidence",
 }
 
 
@@ -123,7 +129,7 @@ def test_eda_guide_report_contains_completed_stages_and_next_steps(tmp_path):
     assert output_path.read_text(encoding="utf-8") == report
     assert "## Part 1 - File ingestion" in report
     assert "## Part 6 - Before-and-after summary" in report
-    assert "## Part 7 - Next EDA steps" in report
+    assert "## Part 8 - Next EDA steps" in report
     assert "Visualization recommendations" in report
     assert "Semantic type" in report
     assert "Action status counts" in report

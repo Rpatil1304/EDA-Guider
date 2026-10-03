@@ -120,6 +120,90 @@ def test_datetime_conversion_is_lossless_and_logged():
     conversion_log = next(entry for entry in log if entry["action"] == "convert_to_datetime")
     assert conversion_log["status"] == "executed"
     assert conversion_log["invalid_non_null_count"] == 0
+    assert conversion_log["timezone_policy"] == "utc"
+
+
+def test_datetime_conversion_rejects_excessive_invalid_values():
+    raw = pd.DataFrame({"created_at": ["2025-01-01", "invalid", "invalid"]})
+    plan = make_plan(
+        PreprocessingAction(
+            columns=["created_at"],
+            action="convert_to_datetime",
+            confidence=0.95,
+            reason="invalid date test",
+        )
+    )
+
+    cleaned, log = execute_preprocessing_plan(raw, plan)
+
+    assert cleaned["created_at"].tolist() == raw["created_at"].tolist()
+    conversion_log = next(entry for entry in log if entry["action"] == "convert_to_datetime")
+    assert conversion_log["status"] == "rejected"
+    assert conversion_log["invalid_non_null_count"] == 2
+
+
+def test_ambiguous_numeric_dates_require_review():
+    raw = pd.DataFrame({"event_date": ["01/02/2025", "02/03/2025"]})
+    from app.preprocessing.raw_rule_engine import generate_preprocessing_plan
+    from app.profiling.raw_profiler import profile_raw_dataframe
+
+    plan = generate_preprocessing_plan(raw, profile_raw_dataframe(raw))
+    assert [action.action for action in plan.actions] == [
+        "review_ambiguous_date_format"
+    ]
+
+    cleaned, log = execute_preprocessing_plan(raw, plan)
+
+    assert cleaned.equals(raw)
+    review_log = next(
+        entry for entry in log if entry["action"] == "review_ambiguous_date_format"
+    )
+    assert review_log["status"] == "needs_review"
+
+
+def test_explicit_dayfirst_policy_allows_ambiguous_date_conversion():
+    raw = pd.DataFrame({"event_date": ["01/02/2025", "02/03/2025"]})
+    from app.preprocessing.raw_rule_engine import generate_preprocessing_plan
+    from app.profiling.raw_profiler import profile_raw_dataframe
+
+    plan = generate_preprocessing_plan(
+        raw,
+        profile_raw_dataframe(raw),
+        date_dayfirst=True,
+    )
+    assert [action.action for action in plan.actions] == ["convert_to_datetime"]
+
+    cleaned, _ = execute_preprocessing_plan(raw, plan, date_dayfirst=True)
+    assert cleaned["event_date"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2025-02-01",
+        "2025-03-02",
+    ]
+
+
+def test_mixed_timezone_dates_are_normalized_to_utc():
+    raw = pd.DataFrame(
+        {
+            "created_at": [
+                "2025-01-01T00:00:00+00:00",
+                "2025-01-02T00:00:00+05:30",
+            ]
+        }
+    )
+    plan = make_plan(
+        PreprocessingAction(
+            columns=["created_at"],
+            action="convert_to_datetime",
+            confidence=0.95,
+            reason="timezone test",
+        )
+    )
+
+    cleaned, log = execute_preprocessing_plan(raw, plan)
+
+    assert str(cleaned["created_at"].dtype) == "datetime64[ns, UTC]"
+    assert next(entry for entry in log if entry["action"] == "convert_to_datetime")[
+        "timezone_policy"
+    ] == "utc"
 
 
 def test_boolean_conversion_rejects_unknown_non_null_values():

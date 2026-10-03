@@ -2,6 +2,7 @@
 Data transformations
 """
 import pandas as pd
+import numpy as np
 
 class Transformer:
     """Apply data transformations"""

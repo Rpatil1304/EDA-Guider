@@ -168,6 +168,7 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
             values,
             errors="coerce",
             format="mixed",
+            utc=True,
         )
 
         datetime_like_count = int(
@@ -288,15 +289,33 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
     # Semantic type classification
     # ---------------------------------------------------------
 
-    if pd.api.types.is_numeric_dtype(series):
+    if pd.api.types.is_bool_dtype(series):
         semantic_type, classification_confidence = (
-            "numeric",
+            "boolean",
             1.0,
         )
 
-    elif pd.api.types.is_bool_dtype(series):
+    elif pd.api.types.is_complex_dtype(series):
         semantic_type, classification_confidence = (
-            "boolean",
+            "unresolved",
+            0.0,
+        )
+
+    elif pd.api.types.is_timedelta64_dtype(series):
+        semantic_type, classification_confidence = (
+            "timedelta",
+            1.0,
+        )
+
+    elif isinstance(series.dtype, pd.CategoricalDtype):
+        semantic_type, classification_confidence = (
+            "categorical",
+            1.0,
+        )
+
+    elif pd.api.types.is_numeric_dtype(series):
+        semantic_type, classification_confidence = (
+            "numeric",
             1.0,
         )
 
@@ -451,6 +470,12 @@ def _column_profile(series: pd.Series, row_count: int) -> dict:
 
         "mixed_format_warning": (
             len(format_signatures) > 1
+        ),
+
+        "ambiguous_date_warning": (
+            "numeric_date" in format_signatures
+            and "iso_date" not in format_signatures
+            and "named_date" not in format_signatures
         ),
 
         "outlier_count": outlier_count,

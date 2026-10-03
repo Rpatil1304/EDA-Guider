@@ -189,6 +189,7 @@ def run_preprocessing_stage(
     preprocessing_plan,
     data_loss_threshold: float = 0.30,
     case_strategy: str = "lower",
+    date_dayfirst: bool | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Execute Part 5 and return the cleaned data plus final Part 6 report."""
 
@@ -199,6 +200,7 @@ def run_preprocessing_stage(
         preprocessing_plan,
         data_loss_threshold=data_loss_threshold,
         case_strategy=case_strategy,
+        date_dayfirst=date_dayfirst,
     )
     summary = build_preprocessing_summary_report(
         raw_profile_report,

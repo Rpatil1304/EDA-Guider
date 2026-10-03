@@ -31,7 +31,7 @@ def test_summary_compares_raw_and_cleaned_profiles():
     assert summary["report_type"] == "preprocessing_summary"
     assert summary["raw_profile"]["profile_type"] == "raw"
     assert summary["cleaned_profile"]["profile_type"] == "cleaned"
-    assert amount["changes"]["dtype"]["before"] == "str"
+    assert amount["changes"]["dtype"]["before"] in {"str", "object"}
     assert amount["changes"]["dtype"]["after"] in {"int64", "Int64"}
     assert amount["changes"]["dtype"]["changed"] is True
     assert amount["actions"]

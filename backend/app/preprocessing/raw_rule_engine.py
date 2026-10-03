@@ -35,6 +35,7 @@ def _add_action(
 def generate_preprocessing_plan_from_raw_profile(
     df: pd.DataFrame,
     raw_profile: dict,
+    date_dayfirst: bool | None = None,
 ) -> PreprocessingPlan:
     """Create non-mutating preprocessing proposals from raw profile evidence.
 
@@ -48,6 +49,8 @@ def generate_preprocessing_plan_from_raw_profile(
         raise TypeError("A DataFrame is required to generate a preprocessing plan.")
     if raw_profile.get("profile_type") != "raw":
         raise ValueError("raw_profile must be a raw profile report.")
+    if date_dayfirst not in {None, True, False}:
+        raise ValueError("date_dayfirst must be True, False, or None.")
 
     actions: list[PreprocessingAction] = []
     profiles = raw_profile.get("columns", [])
@@ -98,11 +101,29 @@ def generate_preprocessing_plan_from_raw_profile(
                 f"{numeric_score:.1f}% of non-null values match a numeric pattern while the raw dtype is string-like.",
                 {"numeric_like_percentage": numeric_score},
             )
-        if datetime_score >= 80 and is_string_like and semantic_type == "datetime":
+        mixed_format_warning = bool(profile.get("mixed_format_warning"))
+        if (
+            datetime_score >= 80
+            and is_string_like
+            and semantic_type == "datetime"
+            and not mixed_format_warning
+            and (
+                not profile.get("ambiguous_date_warning", False)
+                or date_dayfirst is not None
+            )
+        ):
             _add_action(
                 actions, column, "convert_to_datetime", datetime_score,
                 f"{datetime_score:.1f}% of non-null values parse as datetimes while the raw dtype is string-like.",
-                {"datetime_like_percentage": datetime_score},
+                {
+                    "datetime_like_percentage": datetime_score,
+                    "dayfirst": date_dayfirst,
+                },
+            )
+        if profile.get("ambiguous_date_warning") and date_dayfirst is None:
+            _add_action(
+                actions, column, "review_ambiguous_date_format", 100.0,
+                "Numeric date values are ambiguous without an explicit day-first or month-first policy; automatic conversion was not applied.",
             )
         if boolean_score >= 70 and is_string_like and semantic_type == "boolean":
             _add_action(
@@ -144,7 +165,7 @@ def generate_preprocessing_plan_from_raw_profile(
                 f"Numeric skewness is {profile['skewness']:.3f}; review downstream summaries and charts.",
                 {"skewness": profile["skewness"]},
             )
-        if profile.get("mixed_format_warning"):
+        if mixed_format_warning:
             _add_action(
                 actions, column, "review_mixed_format", 100.0,
                 "Inconsistent formatting signals were detected; automatic conversion was not assumed.",

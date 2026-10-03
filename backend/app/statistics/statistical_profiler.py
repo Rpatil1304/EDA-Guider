@@ -506,6 +506,12 @@ def build_statistical_profile(
             )
         )
 
+        # Pandas considers bool a numeric dtype, but boolean columns must
+        # use the dedicated boolean statistics path. This guard also keeps
+        # the profiler safe when it receives a stale or incomplete profile.
+        if pd.api.types.is_bool_dtype(series):
+            inferred_type = "boolean"
+
         # -----------------------------------------------------------
         # General statistics
         # -----------------------------------------------------------

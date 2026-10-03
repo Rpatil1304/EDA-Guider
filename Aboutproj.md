@@ -255,6 +255,7 @@ Each column profile includes:
 - Classification confidence
 - Format signatures
 - Mixed-format warning
+- Ambiguous numeric-date warning
 - Outlier count and values for local reports
 - Skewness
 - Quality warnings
@@ -333,7 +334,7 @@ Currency symbols, percentages, units, and measurement conversions are not automa
 
 ### 9.2 Datetime detection
 
-String-like values are tested with mixed-format datetime parsing. Numeric and Boolean columns are excluded from date inference to prevent ordinary numbers from becoming timestamps accidentally.
+String-like values are tested with mixed-format datetime parsing using UTC normalization for timezone-aware values. Numeric and Boolean columns are excluded from date inference to prevent ordinary numbers from becoming timestamps accidentally. Ambiguous numeric dates and incompatible date formats are sent for review rather than converted using an implicit locale or date-order assumption.
 
 ### 9.3 Boolean detection
 

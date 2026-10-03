@@ -200,7 +200,10 @@ def _restore_csv_header(
     return df
 
 
-def load_file(file_input: FileInput) -> tuple[pd.DataFrame | None, dict]:
+def load_file(
+    file_input: FileInput,
+    date_dayfirst: bool | None = None,
+) -> tuple[pd.DataFrame | None, dict]:
     """Safely load one CSV or Excel input and return its ingestion report.
 
     The report always contains ``status``, ``encoding``, ``delimiter``,
@@ -292,6 +295,7 @@ def load_file(file_input: FileInput) -> tuple[pd.DataFrame | None, dict]:
             generate_preprocessing_plan_from_raw_profile(
                 df,
                 report["raw_profile"],
+                date_dayfirst=date_dayfirst,
             ).model_dump()
         )
 
