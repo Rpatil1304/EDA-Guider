@@ -15,9 +15,79 @@ def display_report(result):
 
     st.markdown(
         """
+        <style>
+        .stApp {
+            background: #f7fafc;
+        }
+        .block-container {
+            max-width: 1450px;
+            padding-top: 2rem;
+            padding-bottom: 4rem;
+        }
+        .report-hero {
+            background: linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 100%);
+            border: 1px solid #bae6fd;
+            border-radius: 20px;
+            padding: 2rem 2.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .report-hero h1 {
+            color: #0f172a;
+            font-size: 2.25rem;
+            margin: 0 0 .35rem 0;
+        }
+        .report-hero p {
+            color: #475569;
+            font-size: 1rem;
+            margin: 0;
+        }
+        .section-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 1.35rem 1.5rem;
+            margin: 1rem 0;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, .04);
+        }
+        .section-card h2 {
+            color: #0f766e;
+            margin-top: 0;
+        }
+        .small-label {
+            color: #64748b;
+            font-size: .78rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .small-value {
+            color: #0f172a;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+        .step-card {
+            background: #f8fafc;
+            border-left: 4px solid #14b8a6;
+            border-radius: 10px;
+            margin: .55rem 0;
+            padding: .8rem 1rem;
+        }
+        .recommendation-card {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 12px;
+            margin: .65rem 0;
+            padding: 1rem 1.1rem;
+        }
+        .recommendation-card strong {
+            color: #1d4ed8;
+        }
+        </style>
         <div class="report-header">
-            <h1>EDA Report</h1>
-            <p>Automated Exploratory Data Analysis</p>
+            <div class="report-hero">
+                <h1>EDA Report</h1>
+                <p>Clear, evidence-based exploration of your dataset</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -754,353 +824,281 @@ def display_final_report(result):
     Display the final LLM-generated human-readable EDA report.
     """
 
-    st.header("Final EDA Report")
-
     final_report = result.get(
         "final_eda_report"
     ) or {}
 
     if not final_report:
-        st.info(
-            "Final EDA report is not available yet."
-        )
-        return
+        final_report = _build_report_from_pipeline_result(result)
 
-    # ========================================================
-    # 1. RAW DATA INFORMATION
-    # ========================================================
-
-    raw_dataset = final_report.get(
-        "raw_dataset",
-        {},
+    raw_dataset = _as_dict(final_report.get("raw_dataset"))
+    preprocessing = _as_dict(final_report.get("preprocessing"))
+    cleaned_data = (
+        _as_dict(final_report.get("cleaned_dataset"))
+        or _as_dict(final_report.get("cleaned_data"))
+    )
+    statistics = (
+        _as_dict(final_report.get("statistics"))
+        or _as_dict(final_report.get("statistical_information"))
+        or _as_dict(result.get("statistics"))
+    )
+    visualizations = (
+        _as_dict(final_report.get("visualizations"))
+        or _as_dict(final_report.get("visualization_recommendations"))
+        or _as_dict(result.get("visualization_recommendations"))
     )
 
-    if raw_dataset:
-
-        st.subheader(
-            "1. Raw Dataset Information"
+    _report_section_title("1", "Raw Dataset Information")
+    raw_columns = raw_dataset.get("columns") or _typed_columns(raw_dataset)
+    raw_profile = _as_dict(result.get("raw_profile"))
+    _metric_row([
+        ("Rows", raw_dataset.get("row_count", raw_profile.get("row_count", 0))),
+        ("Columns", raw_dataset.get("column_count", raw_profile.get("column_count", 0))),
+        ("Missing Values", raw_dataset.get("total_missing_count", raw_profile.get("null_summary", {}).get("total_missing", 0))),
+        ("Missing %", _format_percentage(raw_dataset.get("total_missing_percentage", 0))),
+    ])
+    if raw_columns:
+        st.dataframe(
+            _column_table(raw_columns),
+            use_container_width=True,
+            hide_index=True,
         )
+    _render_warnings(raw_dataset.get("warnings") or [])
 
-        overview = raw_dataset.get(
-            "overview",
-            "",
-        )
-
-        if overview:
-            st.write(overview)
-
-        row_count = raw_dataset.get(
-            "row_count",
-            0,
-        )
-
-        column_count = raw_dataset.get(
-            "column_count",
-            0,
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric(
-                "Rows",
-                f"{row_count:,}",
-            )
-
-        with col2:
-            st.metric(
-                "Columns",
-                f"{column_count:,}",
-            )
-
-        numeric_columns = raw_dataset.get(
-            "numeric_columns",
-            [],
-        )
-
-        categorical_columns = raw_dataset.get(
-            "categorical_columns",
-            [],
-        )
-
-        datetime_columns = raw_dataset.get(
-            "datetime_columns",
-            [],
-        )
-
-        boolean_columns = raw_dataset.get(
-            "boolean_columns",
-            [],
-        )
-
-        missing_value_columns = raw_dataset.get(
-            "missing_value_columns",
-            [],
-        )
-
-        if numeric_columns:
-            st.write(
-                "**Numeric Columns:** "
-                + ", ".join(numeric_columns)
-            )
-
-        if categorical_columns:
-            st.write(
-                "**Categorical Columns:** "
-                + ", ".join(categorical_columns)
-            )
-
-        if datetime_columns:
-            st.write(
-                "**Datetime Columns:** "
-                + ", ".join(datetime_columns)
-            )
-
-        if boolean_columns:
-            st.write(
-                "**Boolean Columns:** "
-                + ", ".join(boolean_columns)
-            )
-
-        if missing_value_columns:
-            st.write(
-                "**Columns With Missing Values:** "
-                + ", ".join(missing_value_columns)
-            )
-
-    # ========================================================
-    # 2. PREPROCESSING STEPS
-    # ========================================================
-
-    preprocessing = final_report.get(
-        "preprocessing",
-        {},
-    )
-
-    if preprocessing:
-
-        st.subheader(
-            "2. Preprocessing Steps"
-        )
-
-        summary = preprocessing.get(
-            "summary",
-            "",
-        )
-
-        if summary:
-            st.write(summary)
-
-        rows_before = preprocessing.get(
-            "rows_before",
-            0,
-        )
-
-        rows_after = preprocessing.get(
-            "rows_after",
-            0,
-        )
-
-        columns_before = preprocessing.get(
-            "columns_before",
-            0,
-        )
-
-        columns_after = preprocessing.get(
-            "columns_after",
-            0,
-        )
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric(
-                "Rows Before",
-                f"{rows_before:,}",
-            )
-
-        with col2:
-            st.metric(
-                "Rows After",
-                f"{rows_after:,}",
-            )
-
-        with col3:
-            st.metric(
-                "Columns Before",
-                f"{columns_before:,}",
-            )
-
-        with col4:
-            st.metric(
-                "Columns After",
-                f"{columns_after:,}",
-            )
-
-        steps = preprocessing.get(
-            "steps",
-            [],
-        )
-
-        if steps:
-
+    _report_section_title("2", "Preprocessing Steps")
+    summary = _as_dict(preprocessing.get("summary"))
+    _metric_row([
+        ("Rows Before", preprocessing.get("rows_before", summary.get("raw_row_count", summary.get("rows_before", 0)))),
+        ("Rows After", preprocessing.get("rows_after", summary.get("cleaned_row_count", summary.get("rows_after", 0)))),
+        ("Columns Before", preprocessing.get("columns_before", summary.get("raw_column_count", summary.get("columns_before", 0)))),
+        ("Columns After", preprocessing.get("columns_after", summary.get("cleaned_column_count", summary.get("columns_after", 0)))),
+    ])
+    steps = preprocessing.get("steps") or preprocessing.get("execution_log") or []
+    if steps:
+        for index, step in enumerate(steps, start=1):
+            if isinstance(step, dict):
+                action = step.get("action") or step.get("operation") or "Preprocessing action"
+                detail = step.get("message") or step.get("reason") or step.get("description") or ""
+                status = str(step.get("status", "completed")).replace("_", " ").title()
+            else:
+                action, detail, status = str(step), "", "Completed"
             st.markdown(
-                "**Actions Performed:**"
+                f'<div class="step-card"><b>{index}. {action}</b>'
+                f'<br><span class="small-label">{status}</span>'
+                f'{"<br>" + detail if detail else ""}</div>',
+                unsafe_allow_html=True,
             )
+    else:
+        st.info("No preprocessing steps were recorded.")
 
-            for step in steps:
-                st.write(
-                    f"• {step}"
+    _report_section_title("3", "Cleaned Dataset Information")
+    cleaned_columns = cleaned_data.get("columns") or []
+    cleaned_rows = cleaned_data.get("row_count", preprocessing.get("rows_after", summary.get("cleaned_row_count", 0)))
+    cleaned_count = cleaned_data.get("column_count", preprocessing.get("columns_after", summary.get("cleaned_column_count", 0)))
+    _metric_row([
+        ("Rows", cleaned_rows),
+        ("Columns", cleaned_count),
+        ("Missing Values", cleaned_data.get("total_missing_count", 0)),
+        ("Rows Removed", max(0, preprocessing.get("rows_before", summary.get("raw_row_count", cleaned_rows)) - cleaned_rows)),
+    ])
+    excluded = cleaned_data.get("excluded_columns") or preprocessing.get("excluded_columns") or []
+    removed_columns = len(excluded)
+    if removed_columns:
+        st.info(f"{removed_columns} column(s) excluded during preprocessing: {_join_items(excluded)}")
+    if cleaned_columns:
+        st.dataframe(_column_table(cleaned_columns), use_container_width=True, hide_index=True)
+    for label, values in [
+        ("Unresolved columns", preprocessing.get("unresolved_columns")),
+        ("Columns needing review", preprocessing.get("needs_review_columns")),
+    ]:
+        if values:
+            st.warning(f"{label}: {_join_items(values)}")
+
+    _report_section_title("4", "Statistical Information")
+    _render_statistics(statistics)
+
+    _report_section_title("5", "Visualization Recommendations")
+    recommendations = (
+        visualizations.get("selected")
+        or visualizations.get("recommendations")
+        or []
+    )
+    if recommendations:
+        for index, item in enumerate(recommendations, start=1):
+            if isinstance(item, dict):
+                chart = _format_chart_name(item.get("chart_type") or item.get("type"))
+                columns = _join_items(item.get("columns") or item.get("visualizations") or [])
+                reason = item.get("reason") or "Useful for exploring the selected variables."
+                priority = str(item.get("priority", "medium")).title()
+                confidence = item.get("confidence")
+                confidence_text = (
+                    f" · Confidence: {_format_percentage(float(confidence) * 100)}"
+                    if confidence is not None else ""
                 )
+                body = f"<b>{index}. {chart}</b> · {priority}{confidence_text}<br>"
+                body += f"<span>Columns: {columns or 'Selected dataset variables'}</span><br>{reason}"
+            else:
+                body = f"<b>{index}. Recommendation</b><br>{item}"
+            st.markdown(f'<div class="recommendation-card">{body}</div>', unsafe_allow_html=True)
+    else:
+        st.info("No visualization recommendations were produced.")
 
-    # ========================================================
-    # 3. CLEANED DATA INFORMATION
-    # ========================================================
+# ============================================================
+# FINAL REPORT DISPLAY HELPERS
+# ============================================================
 
-    cleaned_data = final_report.get(
-        "cleaned_data",
-        {},
+def _as_dict(value):
+    """Keep legacy text fields from breaking structured report rendering."""
+    return value if isinstance(value, dict) else {}
+
+
+def _build_report_from_pipeline_result(result):
+    """Render deterministic backend evidence when the narrative model is unavailable."""
+    raw_profile = _as_dict(result.get("raw_profile"))
+    preprocessing = _as_dict(result.get("preprocessing"))
+    statistics = _as_dict(result.get("statistics"))
+    recommendations = _as_dict(result.get("visualization_recommendations"))
+    return {
+        "raw_dataset": {
+            "row_count": raw_profile.get("row_count", 0),
+            "column_count": raw_profile.get("column_count", 0),
+            "columns": raw_profile.get("columns", []),
+            "total_missing_count": (
+                _as_dict(raw_profile.get("null_summary"))
+                .get("total_missing", 0)
+            ),
+        },
+        "preprocessing": preprocessing,
+        "cleaned_data": {
+            "row_count": (
+                preprocessing.get("rows_after", 0)
+                if isinstance(preprocessing, dict)
+                else 0
+            ),
+            "column_count": (
+                preprocessing.get("columns_after", 0)
+                if isinstance(preprocessing, dict)
+                else 0
+            ),
+            "excluded_columns": preprocessing.get("excluded_columns", []),
+        },
+        "statistical_information": statistics,
+        "visualization_recommendations": recommendations,
+    }
+
+
+def _typed_columns(report):
+    """Build a readable column table from the compact final-report schema."""
+    columns = []
+    for field, inferred_type in [
+        ("numeric_columns", "numeric"),
+        ("categorical_columns", "categorical"),
+        ("datetime_columns", "datetime"),
+        ("boolean_columns", "boolean"),
+    ]:
+        for name in report.get(field) or []:
+            columns.append({
+                "name": name,
+                "semantic_type": inferred_type,
+            })
+    return columns
+
+
+def _report_section_title(number, title):
+    st.markdown(
+        f'<div class="section-card"><h2>{number}. {title}</h2></div>',
+        unsafe_allow_html=True,
     )
 
-    if cleaned_data:
 
-        st.subheader(
-            "3. Cleaned Data Information"
-        )
-
-        overview = cleaned_data.get(
-            "overview",
-            "",
-        )
-
-        if overview:
-            st.write(overview)
-
-        row_count = cleaned_data.get(
-            "row_count",
-            0,
-        )
-
-        column_count = cleaned_data.get(
-            "column_count",
-            0,
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric(
-                "Cleaned Rows",
-                f"{row_count:,}",
-            )
-
-        with col2:
-            st.metric(
-                "Cleaned Columns",
-                f"{column_count:,}",
-            )
-
-        retained_columns = cleaned_data.get(
-            "retained_columns",
-            [],
-        )
-
-        excluded_columns = cleaned_data.get(
-            "excluded_columns",
-            [],
-        )
-
-        if retained_columns:
-
-            st.write(
-                "**Retained Columns:** "
-                + ", ".join(retained_columns)
-            )
-
-        if excluded_columns:
-
-            st.write(
-                "**Excluded Columns:** "
-                + ", ".join(excluded_columns)
-            )
-
-    # ========================================================
-    # 4. STATISTICAL INFORMATION
-    # ========================================================
-
-    statistical_information = final_report.get(
-        "statistical_information",
-        {},
-    )
-
-    if statistical_information:
-
-        st.subheader(
-            "4. Statistical Information"
-        )
-
-        overview = statistical_information.get(
-            "overview",
-            "",
-        )
-
-        if overview:
-            st.write(overview)
-
-        key_findings = statistical_information.get(
-            "key_findings",
-            [],
-        )
-
-        if key_findings:
-
+def _metric_row(metrics):
+    columns = st.columns(len(metrics))
+    for container, (label, value) in zip(columns, metrics):
+        with container:
+            display_value = value if isinstance(value, str) else _format_number(value)
             st.markdown(
-                "**Key Findings:**"
+                f'<div class="small-label">{label}</div>'
+                f'<div class="small-value">{display_value}</div>',
+                unsafe_allow_html=True,
             )
 
-            for finding in key_findings:
-                st.write(
-                    f"• {finding}"
-                )
 
-    # ========================================================
-    # 5. VISUALIZATION RECOMMENDATIONS
-    # ========================================================
+def _join_items(values):
+    names = []
+    for value in values or []:
+        if isinstance(value, dict):
+            names.append(
+                str(value.get("column") or value.get("name") or value.get("action") or value)
+            )
+        else:
+            names.append(str(value))
+    return ", ".join(names) if names else "-"
 
-    visualization_recommendations = final_report.get(
-        "visualization_recommendations",
-        {},
-    )
 
-    if visualization_recommendations:
+def _column_table(columns):
+    rows = []
+    for column in columns:
+        if not isinstance(column, dict):
+            continue
+        rows.append({
+            "Column": column.get("name") or column.get("column") or "-",
+            "Data type": column.get("dtype") or column.get("inferred_type") or column.get("semantic_type") or "-",
+            "Inferred type": column.get("semantic_type") or column.get("inferred_type") or "-",
+            "Non-null": column.get("non_null_count", column.get("count", "-")),
+            "Missing": column.get("null_count", column.get("missing_count", "-")),
+            "Unique": column.get("unique_count", "-"),
+        })
+    return pd.DataFrame(rows)
 
-        st.subheader(
-            "5. Visualization Recommendations"
-        )
 
-        overview = visualization_recommendations.get(
-            "overview",
-            "",
-        )
+def _render_warnings(warnings):
+    for warning in warnings:
+        text = warning.get("message", warning) if isinstance(warning, dict) else warning
+        st.warning(str(text))
 
-        if overview:
-            st.write(overview)
 
-        recommendations = visualization_recommendations.get(
-            "recommendations",
-            [],
-        )
+def _render_statistics(statistics):
+    sections = [
+        ("Numeric variables", statistics.get("numeric_statistics") or statistics.get("numeric_columns") or [],
+         ["mean", "median", "std", "minimum", "maximum", "outlier_count"]),
+        ("Categorical variables", statistics.get("categorical_statistics") or statistics.get("categorical_columns") or [],
+         ["unique_count", "top", "top_frequency", "top_percentage"]),
+        ("Datetime variables", statistics.get("datetime_statistics") or statistics.get("datetime_columns") or [],
+         ["minimum", "maximum", "unique_count", "duration_days"]),
+        ("Boolean variables", statistics.get("boolean_statistics") or statistics.get("boolean_columns") or [],
+         ["true_count", "false_count", "true_percentage", "false_percentage"]),
+    ]
+    labels = {
+        "mean": "Mean", "median": "Median", "std": "Std. Dev.",
+        "minimum": "Minimum", "maximum": "Maximum", "outlier_count": "Outliers",
+        "unique_count": "Unique", "top": "Most frequent", "top_frequency": "Frequency",
+        "top_percentage": "Top %", "duration_days": "Duration (days)",
+        "true_count": "True", "false_count": "False",
+        "true_percentage": "True %", "false_percentage": "False %",
+    }
+    for title, values, fields in sections:
+        if not values:
+            continue
+        st.markdown(f"**{title}**")
+        rows = []
+        for name, item in values.items() if isinstance(values, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            row = {"Column": name}
+            for field in fields:
+                if field in item:
+                    value = item[field]
+                    row[labels[field]] = (
+                        _format_percentage(value) if "percentage" in field else _format_number(value)
+                    )
+            rows.append(row)
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    correlation = statistics.get("correlation_matrix") or {}
+    if correlation:
+        with st.expander("View correlation matrix"):
+            st.dataframe(pd.DataFrame(correlation), use_container_width=True)
 
-        if recommendations:
-
-            for index, recommendation in enumerate(
-                recommendations,
-                start=1,
-            ):
-
-                st.write(
-                    f"**{index}.** {recommendation}"
-                )
 
 # ============================================================
 # HELPER FUNCTIONS

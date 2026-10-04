@@ -15,6 +15,7 @@ from langchain_core.runnables import RunnableParallel
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.langchain.schemas import (
+    LLMVisualizationValidation,
     LLMVisualizationValidationResponse,
 )
 
@@ -610,6 +611,11 @@ Do NOT add visualizations simply to reach a target number.
 
 Every selected visualization must have a distinct analytical purpose.
 
+Write each recommendation's reason as one short, plain-language sentence
+that explains what the chart will help the user discover. Use the actual
+column names supplied in the evidence when they are relevant. Do not use
+technical shorthand, markdown, or generic phrases such as "for analysis".
+
 ---------------------------------------------------------------
 SELECTION RULE
 ---------------------------------------------------------------
@@ -667,6 +673,7 @@ Before returning the result:
 - keep only useful complementary visualizations
 - prefer approximately 4 to 7 total
 - use fewer if the dataset does not require more
+- make every reason immediately understandable to a non-technical reader
 
 Remember:
 
@@ -1279,6 +1286,36 @@ def validate_visualization_recommendations(
     print("========== MODEL 1 COMPLETE ==========\n")
 
     return result
+
+
+def fallback_visualization_validation(
+    visualization_recommendations: list[dict[str, Any]],
+) -> LLMVisualizationValidationResponse:
+    """Accept deterministic recommendations when the optional LLM is unavailable."""
+    validations = []
+    for recommendation in visualization_recommendations:
+        chart_type = recommendation.get("chart_type", "")
+        columns = (
+            recommendation.get("columns")
+            or recommendation.get("visualizations")
+            or []
+        )
+        if not chart_type:
+            continue
+        validations.append(
+            LLMVisualizationValidation(
+                original_chart_type=chart_type,
+                original_columns=columns,
+                decision="accepted",
+                final_chart_type=chart_type,
+                final_columns=columns,
+                reason="Accepted from the deterministic visualization rules because LLM validation was unavailable.",
+                confidence=0.8,
+            )
+        )
+    return LLMVisualizationValidationResponse(
+        validations=validations
+    )
 
 # ================================================================
 # Input Preparation

@@ -29,6 +29,7 @@ from app.visualization.evidence_grouper import (
 )
 
 from app.langchain.model import (
+    fallback_visualization_validation,
     validate_visualization_recommendations,
 )
 
@@ -606,11 +607,11 @@ def run_preprocessing_pipeline(
             )
         )
 
-    except Exception as error:
-        return _failure(
-            result,
-            "llm_visualization_validation",
-            error,
+    except Exception:
+        result["llm_visualization_validation"] = (
+            fallback_visualization_validation(
+                visualization_recommendation_data
+            )
         )
 
     # ================================================================

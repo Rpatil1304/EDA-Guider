@@ -29,6 +29,7 @@ from app.visualization.evidence_grouper import (
 )
 
 from app.langchain.model import (
+    fallback_visualization_validation,
     validate_visualization_recommendations,
     generate_final_report,
 )
@@ -650,11 +651,11 @@ def run_preprocessing_pipeline(
             )
         )
 
-    except Exception as error:
-        return _failure(
-            result,
-            "llm_visualization_validation",
-            error,
+    except Exception:
+        result["llm_visualization_validation"] = (
+            fallback_visualization_validation(
+                visualization_recommendation_data
+            )
         )
 
     # ================================================================
@@ -696,14 +697,19 @@ def run_preprocessing_pipeline(
         )
 
         # Generate final human-readable report
-        result["final_eda_report"] = (
-            generate_final_report(result)
-        )
+        try:
+            result["final_eda_report"] = (
+                generate_final_report(result)
+            )
+        except Exception:
+            # The structured evidence and deterministic recommendations are
+            # still valid when the optional narrative model is unavailable.
+            result["final_eda_report"] = None
 
     except Exception as error:
         return _failure(
             result,
-            "final_eda_report",
+            "eda_report_evidence",
             error,
         )
 
