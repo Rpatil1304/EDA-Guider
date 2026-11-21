@@ -122,34 +122,36 @@ def _save_cleaned_dataset_for_debug(
     source,
 ) -> None:
     """Save the cleaned dataset locally for development/debugging only."""
+    try:
+        source_name = getattr(source, "name", None)
 
-    source_name = getattr(source, "name", None)
+        if source_name:
+            dataset_stem = Path(source_name).stem
+        else:
+            dataset_stem = "dataset"
 
-    if source_name:
-        dataset_stem = Path(source_name).stem
-    else:
-        dataset_stem = "dataset"
+        debug_directory = (
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / "debug"
+        )
 
-    debug_directory = (
-        Path(__file__).resolve().parents[2]
-        / "data"
-        / "debug"
-    )
+        debug_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-    debug_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+        output_path = (
+            debug_directory
+            / f"{dataset_stem}_cleaned.csv"
+        )
 
-    output_path = (
-        debug_directory
-        / f"{dataset_stem}_cleaned.csv"
-    )
-
-    cleaned_dataframe.to_csv(
-        output_path,
-        index=False,
-    )
+        cleaned_dataframe.to_csv(
+            output_path,
+            index=False,
+        )
+    except Exception:
+        pass
 
 def _build_preprocessing_report_information(
     preprocessing_summary_report: dict[str, Any],
@@ -290,7 +292,14 @@ def _generate_ydata_profile(
             "html": profile.to_html(),
         }
 
-    profile.to_file(output_path)
+    try:
+        profile.to_file(output_path)
+    except Exception:
+        return {
+            "status": "generated_in_memory",
+            "output_path": None,
+            "html": profile.to_html(),
+        }
 
     return {
         "status": "generated",

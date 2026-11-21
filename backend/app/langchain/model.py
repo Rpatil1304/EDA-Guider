@@ -30,25 +30,7 @@ load_dotenv()
 # Model
 # ================================================================
 
-def get_google_model() -> ChatGoogleGenerativeAI:
-    """Create and return the Google Gemini chat model."""
-
-    google_api_key = os.getenv(
-        "GOOGLE_API_KEY"
-    )
-
-    if not google_api_key:
-        raise ValueError(
-            "GOOGLE_API_KEY environment variable "
-            "is not set."
-        )
-
-    return ChatGoogleGenerativeAI(
-        model="gemini-3.8-flash",
-        google_api_key=google_api_key,
-        temperature=0.0,
-        max_output_tokens=4096,
-    )
+from app.llm_client import get_google_chat_model as get_google_model
 
 # ================================================================
 # Parser
@@ -1300,19 +1282,23 @@ def fallback_visualization_validation(
             or recommendation.get("visualizations")
             or []
         )
-        if not chart_type:
+        norm_type = _normalize_chart_type(chart_type)
+        if not norm_type:
             continue
-        validations.append(
-            LLMVisualizationValidation(
-                original_chart_type=chart_type,
-                original_columns=columns,
-                decision="accepted",
-                final_chart_type=chart_type,
-                final_columns=columns,
-                reason="Accepted from the deterministic visualization rules because LLM validation was unavailable.",
-                confidence=0.8,
+        try:
+            validations.append(
+                LLMVisualizationValidation(
+                    original_chart_type=norm_type,
+                    original_columns=columns,
+                    decision="accepted",
+                    final_chart_type=norm_type,
+                    final_columns=columns,
+                    reason="Accepted from the deterministic visualization rules because LLM validation was unavailable.",
+                    confidence=0.8,
+                )
             )
-        )
+        except Exception:
+            continue
     return LLMVisualizationValidationResponse(
         validations=validations
     )

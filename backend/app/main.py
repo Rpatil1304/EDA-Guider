@@ -6,6 +6,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.orchestration.pipeline import run_preprocessing_pipeline
+from app.clean_query.router import clean_router
 
 
 app = FastAPI(
@@ -24,6 +25,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.include_router(
+    clean_router,
+    prefix="/clean",
+    tags=["Clean Dataset Q&A"],
 )
 
 

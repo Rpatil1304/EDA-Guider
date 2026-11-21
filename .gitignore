@@ -45,6 +45,7 @@ dist/
 
 # Data
 data/uploads/*
+data/sample/*
 !data/uploads/.gitkeep
 data/sample/*
 !data/sample/.gitkeep
@@ -54,4 +55,4 @@ data/sample/*
 logs/
 
 .env
-backend/data/debug
+backend/data/debug/*
